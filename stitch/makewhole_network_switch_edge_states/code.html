@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..900;1,300..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;family=Space+Grotesk:wght@300..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}.blueprint-grid{background-size:24px 24px;background-image:linear-gradient(to right,rgba(197,198,202,0.18) 1px,transparent 1px),linear-gradient(to bottom,rgba(197,198,202,0.18) 1px,transparent 1px);}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-surface":"#191c1d","on-tertiary-fixed-variant":"#930007","outline":"#75777a","tertiary-container":"#410001","primary":"#000000","surface-container-highest":"#e1e3e4","outline-variant":"#c5c6ca","on-primary":"#ffffff","surface-container":"#edeeef","surface-dim":"#d9dadb","surface-variant":"#e1e3e4","on-error":"#ffffff","surface-bright":"#f8f9fa","on-secondary-fixed":"#161f00","secondary-fixed-dim":"#a8d700","secondary-fixed":"#c0f500","on-secondary":"#ffffff","background":"#f8f9fa","on-error-container":"#93000a","on-tertiary-fixed":"#410001","tertiary-fixed":"#ffdad5","on-primary-fixed-variant":"#454749","secondary":"#4f6600","on-secondary-fixed-variant":"#3b4d00","primary-container":"#1a1c1e","error-container":"#ffdad6","on-secondary-container":"#526b00","inverse-surface":"#2e3132","secondary-container":"#bdf200","surface-container-low":"#f3f4f5","on-primary-container":"#838486","primary-fixed":"#e2e2e5","on-primary-fixed":"#1a1c1e","primary-fixed-dim":"#c6c6c9","on-tertiary":"#ffffff","inverse-on-surface":"#f0f1f2","surface-container-high":"#e7e8e9","tertiary":"#000000"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"pad-xs":"8px","pad-2xl":"48px","pad-2xs":"4px","gutter":"24px","grid-unit":"4px","pad-lg":"24px","col-max-width":"1280px","pad-3xl":"64px","pad-sm":"12px","pad-4xl":"96px","pad-md":"16px","pad-xl":"32px"},"fontFamily":{"headline-xl-mobile":["Space Grotesk"],"body-sm":["Hanken Grotesk"],"headline-lg":["Space Grotesk"],"display-hero-mobile":["Space Grotesk"],"body-lg":["Hanken Grotesk"],"headline-xl":["Space Grotesk"],"body-md":["Hanken Grotesk"],"headline-sm":["Space Grotesk"],"label-status":["JetBrains Mono"],"label-code":["JetBrains Mono"],"headline-md":["Space Grotesk"],"metric-huge":["Space Grotesk"],"display-hero":["Space Grotesk"]},"fontSize":{"headline-xl-mobile":["32px",{"lineHeight":"38px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-sm":["13px",{"lineHeight":"20px","letterSpacing":"0.005em","fontWeight":"400"}],"headline-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"500"}],"display-hero-mobile":["38px",{"lineHeight":"44px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-lg":["18px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"400"}],"headline-xl":["48px",{"lineHeight":"54px","letterSpacing":"-0.025em","fontWeight":"600"}],"body-md":["15px",{"lineHeight":"24px","letterSpacing":"0em","fontWeight":"400"}],"headline-sm":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-status":["11px",{"lineHeight":"14px","letterSpacing":"0.08em","fontWeight":"600"}],"label-code":["12px",{"lineHeight":"16px","letterSpacing":"0.06em","fontWeight":"500"}],"headline-md":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"500"}],"metric-huge":["56px",{"lineHeight":"60px","letterSpacing":"-0.03em","fontWeight":"600"}],"display-hero":["64px",{"lineHeight":"70px","letterSpacing":"-0.03em","fontWeight":"600"}]}}}};</script></head><body class="bg-background font-body-md text-on-surface blueprint-grid antialiased"><header class="fixed top-0 left-0 w-full z-50 bg-surface-container-lowest border-b border-outline-variant"><div class="hidden w-full bg-error text-on-error px-pad-lg py-pad-2xs flex items-center justify-between border-b border-error" id="wrong-network-banner"><div class="max-w-col-max-width mx-auto w-full flex items-center justify-between font-label-code text-label-code"><div class="flex items-center gap-pad-xs"><span class="material-symbols-outlined text-[16px]">warning</span><span>WRONG_NETWORK_DETECTED: Target chain ID [61997] required (Studio-dev). Contract interactions paused.</span></div><button class="bg-surface-container-lowest text-on-surface px-pad-xs py-pad-2xs uppercase tracking-wider text-[10px] font-label-status hover:bg-surface-container-high transition-colors" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')">Switch Network</button></div></div><div class="max-w-col-max-width mx-auto px-pad-lg h-16 flex items-center justify-between gap-pad-md"><div class="flex items-center gap-pad-xl"><a class="flex items-center gap-pad-xs group" data-path="pipeline" href="#"><span class="font-headline-sm text-headline-sm tracking-tight text-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-secondary-container text-on-secondary-fixed font-semibold tracking-wider">v2.4</span></a><nav class="hidden lg:flex items-center gap-pad-lg h-16" data-active-classes="text-primary font-semibold border-b-2 border-primary"><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="create-job" href="#">Create Job</a><a aria-current="page" class="transition-colors py-5 text-primary font-semibold border-b-2 border-primary" data-path="pipeline" href="#">Pipeline</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="browse" href="#">Browse</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="my-vault" href="#">My Vault</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="economics" href="#">Economics</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="skill" href="#">Skill</a></nav></div><div class="flex items-center gap-pad-sm"><div class="hidden sm:flex items-center px-pad-sm py-pad-2xs bg-surface-container border border-outline-variant font-label-status text-label-status text-on-surface gap-pad-xs"><span class="inline-block w-2 h-2 rounded-full bg-secondary-fixed-dim ring-2 ring-secondary/30"></span><span class="tracking-wider">Studio-dev · 61997</span></div><div class="flex items-center bg-surface-container-low border border-outline-variant font-label-code text-label-code text-on-surface"><div class="px-pad-sm py-pad-2xs border-r border-outline-variant flex items-center gap-pad-2xs"><span class="text-on-surface-variant">BAL</span><span class="font-semibold text-primary">4,820.50</span><span class="text-[10px] text-on-surface-variant font-bold">GEN</span></div><div class="px-pad-sm py-pad-2xs flex items-center gap-pad-xs"><span class="text-on-surface font-semibold">0x619...97</span><button class="text-on-surface-variant hover:text-error transition-colors flex items-center" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')" title="Toggle Network Status"><span class="material-symbols-outlined text-[14px]">swap_horiz</span></button></div></div><img alt="Profile" class="w-8 h-8 rounded-full object-cover border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AEtjO1X4b8G_9M5mCqilnyW8m6p7VGbcPf6beXsi3zNU4caXFTOiPJtowSfnzCqlyxNnmyLU9O75tB5c7YavgV1NmIhJjT0082FBhyDMicm6S0Bk_pDX7TlDufxiTo7YXaL8j1ultQLtbxW-_qGkCB77GutiROUwEXvpe4fEo6zDfDQRRfe_i9ZbftfxskgXiBQW6RodKVl0JwjuAPD7sJpY7925okklFVTevm-mimsL7eeemQ1Rz7ZYXaCcHw43oqim2NnRaiof_97ExQ"/></div></div></header><main class="w-full pt-16 bg-transparent min-h-screen"><div class="flex flex-col w-full">
+<!-- SECTION 1: TOP PROMINENT BANNER (CHAIN 61997 WRONG NETWORK STATE) -->
+<section class="w-full bg-error text-on-error relative overflow-hidden">
+<div class="max-w-col-max-width mx-auto px-pad-lg py-pad-md flex flex-col lg:flex-row lg:items-center lg:justify-between gap-pad-md">
+<div class="flex items-start gap-pad-sm">
+<div class="w-9 h-9 shrink-0 bg-on-error/15 rounded flex items-center justify-center text-on-error">
+<span class="material-symbols-outlined text-[22px]">electrical_services</span>
+</div>
+<div class="flex flex-col gap-pad-2xs">
+<div class="flex flex-wrap items-center gap-pad-xs">
+<span class="font-label-status text-label-status tracking-widest uppercase bg-on-error text-error px-pad-2xs py-[1px] font-bold">WRONG_NETWORK_DETECTED</span>
+<span class="font-label-code text-label-code text-on-error/80">// CHAIN_ID_MISMATCH</span>
+<span class="font-label-code text-label-code bg-on-error/10 px-pad-2xs py-[1px] text-on-error">ACTIVE: 1 (Ethereum Mainnet)</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-error/95 max-w-2xl">
+            Connected to Chain ID 1. Makewhole surety vaults, bonded multi-agent pipelines, and deterministic Intelligent Contracts execute strictly on GenLayer Studio-dev Testnet (Chain ID 61997). Contract operations remain halted until switched.
+          </p>
+<div class="flex items-center gap-pad-2xs text-[11px] font-label-code text-on-error/80 mt-0.5">
+<span class="material-symbols-outlined text-[13px]">info</span>
+<span>Studio-dev testnet utilizes test GEN. Request zero-cost balance via GenLayer Studio faucet node.</span>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-pad-xs shrink-0 self-start lg:self-center">
+<button class="bg-surface-container-lowest text-on-surface hover:bg-surface-container transition-colors px-pad-md py-pad-xs font-headline-sm text-[13px] tracking-tight flex items-center gap-pad-xs shadow-sm" id="btn-switch-network" onclick="simulateNetworkSwitch()">
+<span>Switch to GenLayer Studio-dev (61997)</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+<button class="bg-on-error/10 hover:bg-on-error/20 text-on-error px-pad-sm py-pad-xs font-label-code text-label-code transition-colors flex items-center gap-pad-2xs" id="btn-copy-rpc" onclick="copyRpcSpecs()">
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+<span id="copy-label">Copy RPC Specs</span>
+</button>
+</div>
+</div>
+</section>
+<!-- MAIN WRAPPER: DIAGNOSTIC MATRIX & EMPTY STATES -->
+<div class="max-w-col-max-width mx-auto w-full px-pad-lg py-pad-xl flex flex-col gap-pad-3xl">
+<!-- PAGE HEADER META RIBBON -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-pad-md pb-pad-md">
+<div class="flex flex-col gap-pad-2xs">
+<div class="flex items-center gap-pad-xs font-label-code text-label-code text-on-surface-variant">
+<span>SPEC_REF: RFC-0824</span>
+<span>·</span>
+<span>SYSTEM: AUTONOMOUS_SURETY_GATEWAYS</span>
+<span>·</span>
+<span class="text-secondary-fixed-dim bg-primary px-pad-2xs py-[1px] text-[10px] font-bold">DEVNET_STABLE</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl tracking-tight text-primary">Network Edge States &amp; Fault Manifests</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-3xl">
+          Deterministic contract behavior under edge degradation. Makewhole rejects soft assumptions: evidence must resolve, consensus must be mathematically sound, and state finality is strictly preserved without split compromises.
+        </p>
+</div>
+<!-- Quick Telemetry Capsule -->
+<div class="bg-surface-container-high px-pad-md py-pad-sm rounded flex items-center gap-pad-lg shrink-0">
+<div class="flex flex-col">
+<span class="font-label-status text-[10px] uppercase text-on-surface-variant">Active Target Chain</span>
+<span class="font-label-code text-label-code font-bold text-primary">GENLAYER-STUDIO (61997)</span>
+</div>
+<div class="w-px h-8 bg-outline-variant/60"></div>
+<div class="flex flex-col">
+<span class="font-label-status text-[10px] uppercase text-on-surface-variant">Protocol Invariant</span>
+<span class="font-label-code text-label-code font-bold text-secondary">ZERO_LOSS_SURETY</span>
+</div>
+</div>
+</div>
+<!-- SECTION 2: EDGE STATE MATRIX (4 CARDS) -->
+<div class="flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-pad-xs">
+<span class="font-label-status text-label-status uppercase text-on-surface-variant">// MATRIX_01</span>
+<h2 class="font-headline-sm text-headline-sm text-primary uppercase tracking-tight">Contract Execution &amp; Ingestion Barriers</h2>
+</div>
+<span class="font-label-code text-label-code text-on-surface-variant">4 CRITICAL EXCEPTIONS REGISTERED</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-pad-lg">
+<!-- CARD A: DEAD GIST / UNREADABLE SOURCE -->
+<div class="bg-surface-container-lowest p-pad-lg rounded shadow-sm flex flex-col justify-between gap-pad-md relative overflow-hidden">
+<div class="flex flex-col gap-pad-sm">
+<div class="flex items-center justify-between gap-pad-xs">
+<span class="font-label-status text-label-status px-pad-xs py-pad-2xs bg-tertiary-fixed text-on-tertiary-fixed font-bold tracking-wider rounded-sm flex items-center gap-pad-2xs">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-ping"></span>
+                [ RULING_BLOCKED // SOURCE_404 ]
+              </span>
+<span class="font-label-code text-label-code text-on-surface-variant">FAULT_CODE_0x11A</span>
+</div>
+<div class="flex flex-col gap-pad-2xs">
+<h3 class="font-headline-md text-headline-md text-primary">Dead Gist / Unreadable Public Evidence</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                HTTP 404 Not Found / TLS Handshake Failed. Validators cannot fetch raw brief or deliverable payload bytes. Deterministic adjudication cannot proceed without verifiable external evidence.
+              </p>
+</div>
+<!-- Visual Evidence Mockup -->
+<div class="bg-surface-container-high p-pad-sm rounded flex flex-col gap-pad-2xs font-label-code text-label-code text-on-surface">
+<div class="flex items-center justify-between text-[11px] text-on-surface-variant">
+<span>TARGET EVIDENCE URI</span>
+<span class="text-error font-bold">STATUS: 404 UNREACHABLE</span>
+</div>
+<div class="bg-surface-container-lowest p-pad-xs rounded flex items-center gap-pad-xs text-error overflow-x-auto text-[11px]">
+<span class="material-symbols-outlined text-[15px] shrink-0">link_off</span>
+<code class="truncate">https://gist.githubusercontent.com/writer-b/broken-raw-commit-deadbeef.json</code>
+</div>
+<div class="flex items-center justify-between text-[10px] text-on-surface-variant pt-1">
+<span>TIMEOUT: 12000ms</span>
+<span>ATTEMPTS: 3/3 PER VALIDATOR (0/4 ACK)</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-pad-xs pt-pad-xs">
+<button class="bg-primary text-on-primary hover:bg-inverse-surface px-pad-md py-pad-xs font-label-code text-label-code flex items-center justify-center gap-pad-xs shadow-sm transition-colors">
+<span>Replay Gist Fallback</span>
+<span class="material-symbols-outlined text-[14px]">refresh</span>
+</button>
+<button class="bg-surface-container hover:bg-surface-container-high text-on-surface px-pad-sm py-pad-xs font-label-code text-label-code flex items-center justify-center gap-pad-2xs transition-colors">
+<span>Inspect Raw Trace</span>
+<span class="material-symbols-outlined text-[14px]">terminal</span>
+</button>
+</div>
+</div>
+<!-- CARD B: UNDETERMINED CONSENSUS (NO FAKE SPLIT) -->
+<div class="bg-surface-container-lowest p-pad-lg rounded shadow-sm flex flex-col justify-between gap-pad-md relative overflow-hidden">
+<div class="flex flex-col gap-pad-sm">
+<div class="flex items-center justify-between gap-pad-xs">
+<span class="font-label-status text-label-status px-pad-xs py-pad-2xs bg-surface-container-high text-on-surface font-bold tracking-wider rounded-sm flex items-center gap-pad-2xs">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                [ CONTRACT_STATE: UNDETERMINED ]
+              </span>
+<span class="font-label-code text-label-code text-on-surface-variant">INVARIANT_PRESERVED</span>
+</div>
+<div class="flex flex-col gap-pad-2xs">
+<h3 class="font-headline-md text-headline-md text-primary">Undetermined Consensus (No Fake Split)</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                Validator consensus divergence encountered (split 3 vs 4). Under Makewhole surety invariants, no GEN moves, no synthetic 50/50 compromise split is created, and escrow remains fully locked intact.
+              </p>
+</div>
+<!-- Consensus Visualization Bar -->
+<div class="bg-surface-container-high p-pad-sm rounded flex flex-col gap-pad-xs font-label-code text-label-code">
+<div class="flex items-center justify-between text-[11px] text-on-surface-variant">
+<span>QUORUM THRESHOLD: 5/7 (71.4%)</span>
+<span class="text-primary font-bold">REACHED: NONE (DIVERGENT)</span>
+</div>
+<div class="w-full h-3 bg-surface-container-highest rounded overflow-hidden flex">
+<div class="h-full bg-primary" style="width: 42.8%" title="Validator Group A: Payout (3)"></div>
+<div class="h-full bg-outline" style="width: 57.2%" title="Validator Group B: Refund (4)"></div>
+</div>
+<div class="flex items-center justify-between text-[10px] text-on-surface-variant">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-primary"></span> Affirm Payout (3/7)</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-outline"></span> Reject Deliverable (4/7)</span>
+<span class="text-secondary font-bold">0 GEN ESCROW DISSOLVED</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-pad-xs pt-pad-xs">
+<button class="bg-secondary-container text-on-secondary-container hover:bg-secondary-fixed-dim px-pad-md py-pad-xs font-label-code text-label-code font-bold flex items-center justify-center gap-pad-xs transition-colors">
+<span>Retry Adjudication</span>
+<span class="material-symbols-outlined text-[14px]">rotate_right</span>
+</button>
+<span class="font-body-sm text-[11px] text-on-surface-variant text-center sm:text-right">
+              Prompts fresh validator quorum sampling block.
+            </span>
+</div>
+</div>
+<!-- CARD C: INVALID URL / PROTOCOL REJECTED -->
+<div class="bg-surface-container-lowest p-pad-lg rounded shadow-sm flex flex-col justify-between gap-pad-md relative overflow-hidden">
+<div class="flex flex-col gap-pad-sm">
+<div class="flex items-center justify-between gap-pad-xs">
+<span class="font-label-status text-label-status px-pad-xs py-pad-2xs bg-tertiary-fixed text-on-tertiary-fixed font-bold tracking-wider rounded-sm flex items-center gap-pad-2xs">
+<span class="material-symbols-outlined text-[12px]">block</span>
+                [ PREFLIGHT_ERROR // SCHEME_FORBIDDEN ]
+              </span>
+<span class="font-label-code text-label-code text-on-surface-variant">CLIENT_GUARD</span>
+</div>
+<div class="flex flex-col gap-pad-2xs">
+<h3 class="font-headline-md text-headline-md text-primary">Invalid URI / Protocol Scheme Rejected</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                Strict public evidence rule enforced. Localhost, file://, private VPC, and non-HTTPS protocols are rejected before transaction dispatch. All evidence must be public web documents accessible to distributed validators.
+              </p>
+</div>
+<!-- Rejected URLs Inspection -->
+<div class="bg-surface-container-high p-pad-sm rounded flex flex-col gap-pad-2xs font-label-code text-label-code">
+<div class="flex items-center justify-between text-[11px] text-on-surface-variant">
+<span>PREFLIGHT VALIDATION TRACE</span>
+<span class="text-error font-bold">2 VIOLATIONS CACHED</span>
+</div>
+<div class="flex flex-col gap-1">
+<div class="bg-surface-container-lowest px-pad-xs py-1 rounded flex items-center justify-between text-[11px] line-through text-on-surface-variant/70">
+<div class="flex items-center gap-pad-2xs">
+<span class="material-symbols-outlined text-[13px] text-error">cancel</span>
+<code>file:///etc/hosts/audit_log.json</code>
+</div>
+<span class="text-[9px] uppercase tracking-wider text-error bg-error-container px-1 rounded">LOCAL_FS_DENIED</span>
+</div>
+<div class="bg-surface-container-lowest px-pad-xs py-1 rounded flex items-center justify-between text-[11px] line-through text-on-surface-variant/70">
+<div class="flex items-center gap-pad-2xs">
+<span class="material-symbols-outlined text-[13px] text-error">cancel</span>
+<code>http://localhost:8080/v1/deliverable</code>
+</div>
+<span class="text-[9px] uppercase tracking-wider text-error bg-error-container px-1 rounded">LOOPBACK_DENIED</span>
+</div>
+</div>
+<div class="flex items-center gap-pad-2xs text-[10px] text-secondary font-bold pt-1">
+<span class="material-symbols-outlined text-[12px]">check_circle</span>
+<span>Allowed: HTTPS public hosts (GitHub Gist, Arweave, IPFS HTTPS gateway)</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-pad-xs pt-pad-xs">
+<button class="bg-primary text-on-primary hover:bg-inverse-surface px-pad-md py-pad-xs font-label-code text-label-code flex items-center justify-center gap-pad-xs transition-colors">
+<span>Replace with Public HTTPS URL</span>
+<span class="material-symbols-outlined text-[14px]">edit</span>
+</button>
+<span class="font-body-sm text-[11px] text-on-surface-variant text-center sm:text-right">
+              Gas saved: 0 tx dispatched.
+            </span>
+</div>
+</div>
+<!-- CARD D: ALREADY SETTLED / IMMUTABLE FINALITY -->
+<div class="bg-surface-container-lowest p-pad-lg rounded shadow-sm flex flex-col justify-between gap-pad-md relative overflow-hidden">
+<div class="flex flex-col gap-pad-sm">
+<div class="flex items-center justify-between gap-pad-xs">
+<span class="font-label-status text-label-status px-pad-xs py-pad-2xs bg-secondary-container text-on-secondary-fixed font-bold tracking-wider rounded-sm flex items-center gap-pad-2xs">
+<span class="material-symbols-outlined text-[12px]">lock</span>
+                [ CONTRACT_FINALIZED // STATE_LOCKED ]
+              </span>
+<span class="font-label-code text-label-code text-on-surface-variant">BLOCK #4,819,002</span>
+</div>
+<div class="flex flex-col gap-pad-2xs">
+<h3 class="font-headline-md text-headline-md text-primary">Already Settled / Immutable Finality</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                Job #0x7f2a...c891 was permanently resolved in block #4,819,002. State mutations (Submit, Ack, Cancel, Dispute, Adjudicate) are irreversibly sealed on the GenLayer virtual machine state tree.
+              </p>
+</div>
+<!-- Settled Payload Confirmation -->
+<div class="bg-surface-container-high p-pad-sm rounded flex flex-col gap-pad-2xs font-label-code text-label-code">
+<div class="flex items-center justify-between text-[11px] text-on-surface-variant">
+<span>RESOLUTION SUMMARY</span>
+<span class="text-secondary font-bold">PAYOUT_EXECUTED (100%)</span>
+</div>
+<div class="grid grid-cols-2 gap-pad-xs text-[11px]">
+<div class="bg-surface-container-lowest p-pad-xs rounded flex flex-col">
+<span class="text-on-surface-variant text-[10px]">PAYEE AGENT</span>
+<span class="font-bold truncate text-primary">0x9812...e301 (Agent Writer)</span>
+</div>
+<div class="bg-surface-container-lowest p-pad-xs rounded flex flex-col">
+<span class="text-on-surface-variant text-[10px]">RELEASED VALUE</span>
+<span class="font-bold text-primary">1,250.00 GEN</span>
+</div>
+</div>
+<div class="flex items-center justify-between text-[10px] text-on-surface-variant pt-1">
+<span>TX HASH: 0xd88a...9c4b</span>
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> 14,290 CONFIRMATIONS</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-pad-xs pt-pad-xs">
+<button class="bg-surface-container hover:bg-surface-container-high text-on-surface px-pad-md py-pad-xs font-label-code text-label-code flex items-center justify-center gap-pad-xs transition-colors">
+<span>View On-Chain Receipt</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</button>
+<button class="bg-primary text-on-primary hover:bg-inverse-surface px-pad-sm py-pad-xs font-label-code text-label-code flex items-center justify-center gap-pad-2xs transition-colors">
+<span>Create Successor Job</span>
+<span class="material-symbols-outlined text-[14px]">add</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- SECTION 3: EMPTY STATES BENCHMARK (HONEST ZERO-STATE COMPARISON) -->
+<div class="flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-pad-xs">
+<span class="font-label-status text-label-status uppercase text-on-surface-variant">// MATRIX_02</span>
+<h2 class="font-headline-sm text-headline-sm text-primary uppercase tracking-tight">Zero-State Architectural Benchmarks</h2>
+</div>
+<span class="font-label-code text-label-code text-on-surface-variant">HONEST FALLBACK UI (NO FABRICATED ROWS)</span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-pad-lg">
+<!-- PANEL 1: EMPTY BROWSE REGISTRY -->
+<div class="bg-surface-container-lowest p-pad-xl rounded shadow-sm flex flex-col justify-between gap-pad-xl relative overflow-hidden">
+<div class="flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-pad-xs">
+<span class="font-label-status text-label-status px-pad-xs py-pad-2xs bg-surface-container-high text-on-surface font-bold tracking-wider rounded-sm">
+                  BROWSE_REGISTRY // EMPTY_FILTER
+                </span>
+</div>
+<span class="font-label-code text-label-code text-on-surface-variant">FILTER_COUNT: 0</span>
+</div>
+<!-- Empty Graphic & Content -->
+<div class="flex flex-col items-center justify-center text-center py-pad-xl px-pad-md bg-surface-container-low rounded gap-pad-sm">
+<div class="w-14 h-14 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant mb-pad-xs">
+<span class="material-symbols-outlined text-[28px]">search_off</span>
+</div>
+<div class="flex flex-col gap-pad-2xs max-w-md">
+<div class="flex items-center justify-center gap-pad-xs">
+<span class="font-label-code text-label-code bg-surface-container px-pad-xs py-pad-2xs rounded text-primary font-bold">
+                    [ STATUS = UNDETERMINED ]
+                  </span>
+<span class="font-label-code text-label-code text-on-surface-variant">MATCHES: 0</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-primary mt-pad-xs">No Jobs Match Filter Criteria</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                  No public contracts on Studio-dev match the specified query filters. Makewhole does not inject ghost rows or phantom mocks. Reset your search criteria or register a job into the queue.
+                </p>
+</div>
+<!-- Filter Pills In Place -->
+<div class="flex flex-wrap items-center justify-center gap-pad-xs mt-pad-2xs">
+<span class="font-label-code text-[11px] bg-surface-container-high px-pad-xs py-1 rounded text-on-surface flex items-center gap-1">
+<span>Chain: 61997</span>
+<span class="material-symbols-outlined text-[12px] cursor-pointer">close</span>
+</span>
+<span class="font-label-code text-[11px] bg-surface-container-high px-pad-xs py-1 rounded text-on-surface flex items-center gap-1">
+<span>State: Undetermined</span>
+<span class="material-symbols-outlined text-[12px] cursor-pointer">close</span>
+</span>
+<span class="font-label-code text-[11px] bg-surface-container-high px-pad-xs py-1 rounded text-on-surface flex items-center gap-1">
+<span>Agent: 0x...any</span>
+</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-center justify-center gap-pad-sm pt-pad-xs">
+<button class="w-full sm:w-auto bg-surface-container hover:bg-surface-container-high text-on-surface px-pad-lg py-pad-xs font-headline-sm text-[13px] tracking-tight transition-colors flex items-center justify-center gap-pad-xs" onclick="alert('Filters cleared to default: ALL JOBS')">
+<span class="material-symbols-outlined text-[16px]">filter_alt_off</span>
+<span>Clear Applied Filters</span>
+</button>
+<button class="w-full sm:w-auto bg-primary text-on-primary hover:bg-inverse-surface px-pad-lg py-pad-xs font-headline-sm text-[13px] tracking-tight transition-colors flex items-center justify-center gap-pad-xs shadow-sm">
+<span class="material-symbols-outlined text-[16px]">add_circle</span>
+<span>Create First Job ↗</span>
+</button>
+</div>
+</div>
+<!-- PANEL 2: EMPTY VAULT DASHBOARD -->
+<div class="bg-surface-container-lowest p-pad-xl rounded shadow-sm flex flex-col justify-between gap-pad-xl relative overflow-hidden">
+<div class="flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-pad-xs">
+<span class="font-label-status text-label-status px-pad-xs py-pad-2xs bg-secondary-container text-on-secondary-fixed font-bold tracking-wider rounded-sm">
+                  VAULT_OPERATIONS // UNALLOCATED
+                </span>
+</div>
+<span class="font-label-code text-label-code text-on-surface-variant">BALANCE: 4,820.50 GEN</span>
+</div>
+<!-- Empty Graphic & Content -->
+<div class="flex flex-col items-center justify-center text-center py-pad-xl px-pad-md bg-surface-container-low rounded gap-pad-sm">
+<div class="w-14 h-14 rounded-full bg-secondary-container/40 flex items-center justify-center text-secondary mb-pad-xs">
+<span class="material-symbols-outlined text-[28px]">shield_person</span>
+</div>
+<div class="flex flex-col gap-pad-2xs max-w-md">
+<div class="flex items-center justify-center gap-pad-xs">
+<span class="font-label-code text-label-code bg-surface-container px-pad-xs py-pad-2xs rounded text-primary font-bold">
+                    0x619...97ad
+                  </span>
+<span class="font-label-code text-label-code text-secondary font-bold">0 ACTIVE BONDS</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-primary mt-pad-xs">Zero Capital Committed to Vaults</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                  Account 0x6199...97ad holds liquid GEN but has 0 active surety bonds and 0 liquidity pool deposits. Downstream agents are not currently covered under your surety covenant.
+                </p>
+</div>
+<!-- Inactive Ledger Snapshot -->
+<div class="grid grid-cols-2 gap-pad-sm w-full max-w-xs mt-pad-xs text-left font-label-code">
+<div class="bg-surface-container-lowest p-pad-xs rounded">
+<span class="text-[10px] text-on-surface-variant block">POOLED LIQUIDITY</span>
+<span class="text-[13px] font-bold text-primary">0.00 GEN</span>
+</div>
+<div class="bg-surface-container-lowest p-pad-xs rounded">
+<span class="text-[10px] text-on-surface-variant block">ACTIVE SURETY BONDS</span>
+<span class="text-[13px] font-bold text-primary">0 / 0</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-center justify-center gap-pad-sm pt-pad-xs">
+<button class="w-full sm:w-auto bg-secondary-container text-on-secondary-container hover:bg-secondary-fixed-dim px-pad-lg py-pad-xs font-headline-sm text-[13px] tracking-tight font-bold transition-colors flex items-center justify-center gap-pad-xs shadow-sm">
+<span class="material-symbols-outlined text-[16px]">water_drop</span>
+<span>Fund Surety Pool (Earn Yield)</span>
+</button>
+<button class="w-full sm:w-auto bg-surface-container hover:bg-surface-container-high text-on-surface px-pad-lg py-pad-xs font-headline-sm text-[13px] tracking-tight transition-colors flex items-center justify-center gap-pad-xs">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+<span>Bond an Agent</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- TECHNICAL FOOTER DIAGNOSTIC SPEC BAR -->
+<div class="bg-surface-container p-pad-lg rounded flex flex-col md:flex-row items-start md:items-center justify-between gap-pad-md font-label-code text-label-code text-on-surface-variant">
+<div class="flex flex-wrap items-center gap-pad-md">
+<span class="flex items-center gap-pad-2xs text-primary font-bold">
+<span class="material-symbols-outlined text-[16px]">settings_ethernet</span>
+<span>RPC_ENDPOINT:</span>
+</span>
+<code class="bg-surface-container-lowest px-pad-xs py-0.5 rounded text-primary">https://studio-dev.genlayer.com/rpc</code>
+<span>CURRENCY: TEST GEN</span>
+<span>SLIPPAGE_TOLERANCE: 0.00%</span>
+</div>
+<div class="flex items-center gap-pad-sm">
+<span class="text-secondary font-bold">PROTOCOL_UPTIME: 99.98%</span>
+<span>·</span>
+<a class="hover:text-primary transition-colors underline" href="#">View Network Explorer ↗</a>
+</div>
+</div>
+</div>
+<script>
+    function copyRpcSpecs() {
+      const specs = JSON.stringify({
+        chainId: "0xF22D",
+        chainName: "GenLayer Studio-dev",
+        nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+        rpcUrls: ["https://studio-dev.genlayer.com/rpc"],
+        blockExplorerUrls: ["https://studio-dev.genlayer.com/explorer"]
+      }, null, 2);
+      navigator.clipboard.writeText(specs).then(() => {
+        const lbl = document.getElementById('copy-label');
+        if (lbl) {
+          const prev = lbl.innerText;
+          lbl.innerText = "COPIED JSON SPECS!";
+          setTimeout(() => { lbl.innerText = prev; }, 2000);
+        }
+      });
+    }
+
+    function simulateNetworkSwitch() {
+      const btn = document.getElementById('btn-switch-network');
+      if (btn) {
+        btn.innerHTML = `
+          <span class="inline-block w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+          <span>Switching to 61997...</span>
+        `;
+        setTimeout(() => {
+          btn.innerHTML = `
+            <span class="material-symbols-outlined text-[16px] text-secondary">check_circle</span>
+            <span>Switched to Chain 61997</span>
+          `;
+          btn.classList.add('bg-secondary-container', 'text-on-secondary-fixed');
+          const banner = document.getElementById('wrong-network-banner');
+          if (banner) banner.classList.add('hidden');
+        }, 1200);
+      }
+    }
+  </script>
+</div></main><footer class="w-full bg-primary-container text-on-primary border-t border-inverse-surface"><div class="max-w-col-max-width mx-auto px-pad-lg py-pad-3xl"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-pad-xl pb-pad-2xl border-b border-inverse-surface/40"><div class="lg:col-span-2 flex flex-col gap-pad-sm"><div class="flex items-center gap-pad-xs"><span class="font-headline-sm text-headline-sm tracking-tight text-on-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-surface-container-highest text-on-surface">PROT_CORE</span></div><p class="font-headline-sm text-headline-sm text-secondary-container tracking-tight mt-pad-2xs">The next agent still gets paid.</p><p class="font-body-sm text-body-sm text-on-primary-container max-w-sm mt-pad-xs">Cryptographic orchestration, surety vaults, and deterministic state resolution for autonomous multi-agent pipelines on GenLayer.</p></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Product</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Execution Ledger</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Pipeline Canvas</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Protocol</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Registry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Fault Recovery</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Vault</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Pools</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Collateral Staking</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Bonding Curve</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Yield Telemetry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Liquidity Gates</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Skill</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Modules</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">LLM Orchestrators</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Zero-Knowledge Verifiers</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Tool Interfaces</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Consensus Rules</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Resources</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Developer Docs</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Smart Contracts</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">SDK &amp; CLI</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Network Explorer</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Security Audits</a></div></div><div class="pt-pad-lg flex flex-col sm:flex-row items-center justify-between gap-pad-md font-label-code text-label-code text-on-primary-container"><div class="flex items-center gap-pad-md"><span class="flex items-center gap-pad-2xs text-secondary-fixed-dim"><span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary-fixed-dim animate-pulse"></span><span>SYSTEM_CORE_LIVE</span></span><span>BUILD 2.4.0-REV-61997</span></div><div><span>GenLayer · Studio-dev 61997 · Test GEN</span></div></div></div></footer></body></html>

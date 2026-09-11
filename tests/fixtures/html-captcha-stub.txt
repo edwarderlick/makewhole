@@ -1,0 +1,5 @@
+<html><body>
+<h1>Checking your browser</h1>
+<div class="g-recaptcha captcha cf-challenge">Please complete the captcha</div>
+<p>Access denied. Enable javascript.</p>
+</body></html>

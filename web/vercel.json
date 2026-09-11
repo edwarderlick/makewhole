@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "headers": [
+    {
+      "source": "/api/genlayer",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ]
+}

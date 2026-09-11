@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..900;1,300..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;family=Space+Grotesk:wght@300..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}.blueprint-grid{background-size:24px 24px;background-image:linear-gradient(to right,rgba(197,198,202,0.18) 1px,transparent 1px),linear-gradient(to bottom,rgba(197,198,202,0.18) 1px,transparent 1px);}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-surface":"#191c1d","on-tertiary-fixed-variant":"#930007","outline":"#75777a","tertiary-container":"#410001","primary":"#000000","surface-container-highest":"#e1e3e4","outline-variant":"#c5c6ca","on-primary":"#ffffff","surface-container":"#edeeef","surface-dim":"#d9dadb","surface-variant":"#e1e3e4","on-error":"#ffffff","surface-bright":"#f8f9fa","on-secondary-fixed":"#161f00","secondary-fixed-dim":"#a8d700","secondary-fixed":"#c0f500","on-secondary":"#ffffff","background":"#f8f9fa","on-error-container":"#93000a","on-tertiary-fixed":"#410001","tertiary-fixed":"#ffdad5","on-primary-fixed-variant":"#454749","secondary":"#4f6600","on-secondary-fixed-variant":"#3b4d00","primary-container":"#1a1c1e","error-container":"#ffdad6","on-secondary-container":"#526b00","inverse-surface":"#2e3132","secondary-container":"#bdf200","surface-container-low":"#f3f4f5","on-primary-container":"#838486","primary-fixed":"#e2e2e5","on-primary-fixed":"#1a1c1e","primary-fixed-dim":"#c6c6c9","on-tertiary":"#ffffff","inverse-on-surface":"#f0f1f2","surface-container-high":"#e7e8e9","tertiary":"#000000"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"pad-xs":"8px","pad-2xl":"48px","pad-2xs":"4px","gutter":"24px","grid-unit":"4px","pad-lg":"24px","col-max-width":"1280px","pad-3xl":"64px","pad-sm":"12px","pad-4xl":"96px","pad-md":"16px","pad-xl":"32px"},"fontFamily":{"headline-xl-mobile":["Space Grotesk"],"body-sm":["Hanken Grotesk"],"headline-lg":["Space Grotesk"],"display-hero-mobile":["Space Grotesk"],"body-lg":["Hanken Grotesk"],"headline-xl":["Space Grotesk"],"body-md":["Hanken Grotesk"],"headline-sm":["Space Grotesk"],"label-status":["JetBrains Mono"],"label-code":["JetBrains Mono"],"headline-md":["Space Grotesk"],"metric-huge":["Space Grotesk"],"display-hero":["Space Grotesk"]},"fontSize":{"headline-xl-mobile":["32px",{"lineHeight":"38px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-sm":["13px",{"lineHeight":"20px","letterSpacing":"0.005em","fontWeight":"400"}],"headline-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"500"}],"display-hero-mobile":["38px",{"lineHeight":"44px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-lg":["18px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"400"}],"headline-xl":["48px",{"lineHeight":"54px","letterSpacing":"-0.025em","fontWeight":"600"}],"body-md":["15px",{"lineHeight":"24px","letterSpacing":"0em","fontWeight":"400"}],"headline-sm":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-status":["11px",{"lineHeight":"14px","letterSpacing":"0.08em","fontWeight":"600"}],"label-code":["12px",{"lineHeight":"16px","letterSpacing":"0.06em","fontWeight":"500"}],"headline-md":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"500"}],"metric-huge":["56px",{"lineHeight":"60px","letterSpacing":"-0.03em","fontWeight":"600"}],"display-hero":["64px",{"lineHeight":"70px","letterSpacing":"-0.03em","fontWeight":"600"}]}}}};</script></head><body class="bg-background font-body-md text-on-surface blueprint-grid antialiased"><header class="fixed top-0 left-0 w-full z-50 bg-surface-container-lowest border-b border-outline-variant"><div class="hidden w-full bg-error text-on-error px-pad-lg py-pad-2xs flex items-center justify-between border-b border-error" id="wrong-network-banner"><div class="max-w-col-max-width mx-auto w-full flex items-center justify-between font-label-code text-label-code"><div class="flex items-center gap-pad-xs"><span class="material-symbols-outlined text-[16px]">warning</span><span>WRONG_NETWORK_DETECTED: Target chain ID [61997] required (Studio-dev). Contract interactions paused.</span></div><button class="bg-surface-container-lowest text-on-surface px-pad-xs py-pad-2xs uppercase tracking-wider text-[10px] font-label-status hover:bg-surface-container-high transition-colors" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')">Switch Network</button></div></div><div class="max-w-col-max-width mx-auto px-pad-lg h-16 flex items-center justify-between gap-pad-md"><div class="flex items-center gap-pad-xl"><a class="flex items-center gap-pad-xs group" data-path="pipeline" href="#"><span class="font-headline-sm text-headline-sm tracking-tight text-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-secondary-container text-on-secondary-fixed font-semibold tracking-wider">v2.4</span></a><nav class="hidden lg:flex items-center gap-pad-lg h-16" data-active-classes="text-primary font-semibold border-b-2 border-primary"><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="create-job" href="#">Create Job</a><a aria-current="page" class="transition-colors py-5 text-primary font-semibold border-b-2 border-primary" data-path="pipeline" href="#">Pipeline</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="browse" href="#">Browse</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="my-vault" href="#">My Vault</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="economics" href="#">Economics</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="skill" href="#">Skill</a></nav></div><div class="flex items-center gap-pad-sm"><div class="hidden sm:flex items-center px-pad-sm py-pad-2xs bg-surface-container border border-outline-variant font-label-status text-label-status text-on-surface gap-pad-xs"><span class="inline-block w-2 h-2 rounded-full bg-secondary-fixed-dim ring-2 ring-secondary/30"></span><span class="tracking-wider">Studio-dev · 61997</span></div><div class="flex items-center bg-surface-container-low border border-outline-variant font-label-code text-label-code text-on-surface"><div class="px-pad-sm py-pad-2xs border-r border-outline-variant flex items-center gap-pad-2xs"><span class="text-on-surface-variant">BAL</span><span class="font-semibold text-primary">4,820.50</span><span class="text-[10px] text-on-surface-variant font-bold">GEN</span></div><div class="px-pad-sm py-pad-2xs flex items-center gap-pad-xs"><span class="text-on-surface font-semibold">0x619...97</span><button class="text-on-surface-variant hover:text-error transition-colors flex items-center" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')" title="Toggle Network Status"><span class="material-symbols-outlined text-[14px]">swap_horiz</span></button></div></div><img alt="Profile" class="w-8 h-8 rounded-full object-cover border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AEtjO1X4b8G_9M5mCqilnyW8m6p7VGbcPf6beXsi3zNU4caXFTOiPJtowSfnzCqlyxNnmyLU9O75tB5c7YavgV1NmIhJjT0082FBhyDMicm6S0Bk_pDX7TlDufxiTo7YXaL8j1ultQLtbxW-_qGkCB77GutiROUwEXvpe4fEo6zDfDQRRfe_i9ZbftfxskgXiBQW6RodKVl0JwjuAPD7sJpY7925okklFVTevm-mimsL7eeemQ1Rz7ZYXaCcHw43oqim2NnRaiof_97ExQ"/></div></div></header><main class="w-full pt-16 bg-transparent min-h-screen"><div class="flex flex-col w-full">
+<!-- Master Blueprint Container -->
+<div class="max-w-col-max-width mx-auto w-full px-pad-lg py-pad-xl">
+<!-- Top Metadata Breadcrumb & CAD Registration Bar -->
+<div class="flex flex-wrap items-center justify-between gap-pad-sm pb-pad-md">
+<div class="flex items-center gap-pad-xs font-label-code text-label-code text-on-surface-variant">
+<span class="text-primary font-bold">MKW_ORCHESTRATOR</span>
+<span>/</span>
+<span>PIPELINE_INIT</span>
+<span>/</span>
+<span class="bg-surface-container-high px-pad-2xs py-[2px] text-on-surface uppercase tracking-wider font-semibold">JOB_SPEC_0x4091</span>
+</div>
+<div class="flex items-center gap-pad-md font-label-status text-label-status text-outline">
+<div class="flex items-center gap-pad-2xs">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim inline-block animate-pulse"></span>
+<span class="text-on-surface tracking-wider">GENLAYER_DAEMON: ONLINE</span>
+</div>
+<span class="hidden sm:inline-block">TX_MODEL: PREFLIGHT_SURETY</span>
+<span>+ 40.7128° N, 74.0060° W</span>
+</div>
+</div>
+<!-- Stepped Horizontal Wizard Indicator -->
+<div class="w-full bg-surface-container-lowest shadow-sm p-pad-md mb-pad-xl">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-pad-md relative">
+<!-- Step 1 (Completed) -->
+<div class="flex items-center gap-pad-sm group cursor-pointer p-pad-xs bg-surface-container-low">
+<div class="w-7 h-7 bg-primary text-on-primary flex items-center justify-center font-label-status text-label-status font-bold shadow-sm">
+<span class="material-symbols-outlined text-[16px]">check</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-pad-2xs">
+<span class="font-label-status text-label-status text-outline">STEP 01</span>
+<span class="text-[10px] font-label-status text-secondary font-bold tracking-wider">[VERIFIED]</span>
+</div>
+<span class="font-headline-sm text-[14px] leading-tight text-on-surface truncate font-semibold">Public Brief</span>
+</div>
+</div>
+<!-- Step 2 (Active) -->
+<div class="flex items-center gap-pad-sm p-pad-xs bg-surface-container-highest shadow-md relative overflow-hidden">
+<div class="absolute top-0 left-0 bottom-0 w-1 bg-secondary-container"></div>
+<div class="w-7 h-7 bg-primary text-secondary-container flex items-center justify-center font-label-status text-label-status font-bold ml-1">
+            02
+          </div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-pad-2xs">
+<span class="font-label-status text-label-status text-primary font-bold">ACTIVE STEP</span>
+<span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary-container"></span>
+</div>
+<span class="font-headline-sm text-[14px] leading-tight text-primary truncate font-bold">Pipeline Amounts</span>
+</div>
+</div>
+<!-- Step 3 (Pending) -->
+<div class="flex items-center gap-pad-sm p-pad-xs opacity-60">
+<div class="w-7 h-7 bg-surface-container text-outline flex items-center justify-center font-label-status text-label-status font-bold">
+            03
+          </div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-status text-label-status text-outline">STEP 03</span>
+<span class="font-headline-sm text-[14px] leading-tight text-on-surface truncate">Bond Check</span>
+</div>
+</div>
+<!-- Step 4 (Pending) -->
+<div class="flex items-center gap-pad-sm p-pad-xs opacity-60">
+<div class="w-7 h-7 bg-surface-container text-outline flex items-center justify-center font-label-status text-label-status font-bold">
+            04
+          </div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-status text-label-status text-outline">STEP 04</span>
+<span class="font-headline-sm text-[14px] leading-tight text-on-surface truncate">Review &amp; Escrow</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Main Workspace Split: Left Configuration Form, Right DAG Dynamic Architectural Canvas -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-pad-xl items-start">
+<!-- LEFT COLUMN: Form Engine & Step 1 State Summary (7 Cols) -->
+<div class="lg:col-span-7 flex flex-col gap-pad-lg">
+<!-- Step 1 Summary Box (Contract Specification Locked) -->
+<div class="bg-surface-container-lowest p-pad-md shadow-sm">
+<div class="flex items-center justify-between pb-pad-xs mb-pad-xs">
+<div class="flex items-center gap-pad-xs">
+<span class="font-label-status text-label-status text-outline uppercase tracking-wider">// CONTRACT_INPUT_LOCKED</span>
+<span class="font-label-code text-[11px] bg-surface-container px-pad-2xs text-on-surface-variant">SHA256: 8f4c...c20b</span>
+</div>
+<button class="font-label-code text-label-code text-on-surface hover:text-secondary-fixed-dim transition-colors flex items-center gap-pad-2xs">
+<span class="material-symbols-outlined text-[14px]">edit</span>
+<span>Edit Brief</span>
+</button>
+</div>
+<div class="bg-surface-container-low p-pad-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-pad-sm">
+<div class="flex items-center gap-pad-sm min-w-0">
+<div class="w-8 h-8 bg-surface-container-high flex items-center justify-center flex-shrink-0 text-primary">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-pad-xs">
+<span class="font-label-code text-[12px] text-primary font-bold truncate">https://github.com/agent-swarm/brief-4091.md</span>
+<span class="material-symbols-outlined text-secondary-container text-[16px]" title="Validated HTTPS Mark">verified</span>
+</div>
+<div class="flex items-center gap-pad-xs font-label-status text-[10px] text-on-surface-variant">
+<span>HOST: github.com</span>
+<span>·</span>
+<span>IPFS_MIRROR: bafybei...3m</span>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-pad-xs flex-shrink-0">
+<span class="font-label-status text-[10px] px-pad-xs py-[2px] bg-surface-container-highest text-on-surface tracking-wider uppercase font-semibold">
+                [ Public evidence ]
+              </span>
+<span class="font-label-status text-[10px] px-pad-xs py-[2px] bg-primary text-on-primary font-medium">
+                Research &amp; Synthesis Brief
+              </span>
+</div>
+</div>
+</div>
+<!-- Step 2 Interactive Section -->
+<div class="bg-surface-container-lowest p-pad-lg shadow-sm">
+<div class="flex flex-col pb-pad-md mb-pad-lg">
+<div class="flex items-center gap-pad-xs text-secondary mb-pad-2xs">
+<span class="font-label-status text-label-status uppercase tracking-widest">// PARAMETER_SETUP: PHASE_2</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-primary tracking-tight">Set Pipeline Execution Amounts</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-pad-2xs">
+              Allocate automated disbursement weights across sequential agent roles. Calculations update the surety collateral floor in real time.
+            </p>
+</div>
+<form class="flex flex-col gap-pad-lg" id="jobAmountsForm" onsubmit="event.preventDefault();">
+<!-- Writer B Fee -->
+<div class="flex flex-col gap-pad-2xs">
+<div class="flex items-center justify-between">
+<label class="font-headline-sm text-[15px] text-primary font-semibold flex items-center gap-pad-2xs" for="pay_b">
+<span>pay_B (Writer Fee)</span>
+<span class="font-label-status text-[10px] px-pad-2xs bg-surface-container text-on-surface font-normal">AGENT_02</span>
+</label>
+<span class="font-label-status text-label-status text-outline tracking-wider">STANDARD_REWARD</span>
+</div>
+<div class="relative flex items-center">
+<input class="w-full bg-surface-container-low font-label-code text-[18px] text-primary p-pad-md focus:bg-surface-container-lowest focus:outline-none transition-colors" id="pay_b" min="1" step="0.1" type="number" value="20.00"/>
+<div class="absolute right-4 font-label-code text-label-code text-on-surface font-bold pointer-events-none flex items-center gap-pad-2xs">
+<span>GEN</span>
+<span class="text-outline text-[11px]">TESTNET</span>
+</div>
+</div>
+<p class="font-body-sm text-[12px] text-on-surface-variant">
+                Released to Writer B if validated deliverables pass contract consensus.
+              </p>
+</div>
+<!-- Publisher C Fee -->
+<div class="flex flex-col gap-pad-2xs">
+<div class="flex items-center justify-between">
+<label class="font-headline-sm text-[15px] text-primary font-semibold flex items-center gap-pad-2xs" for="pay_c">
+<span>pay_C (Publisher Fee)</span>
+<span class="font-label-status text-[10px] px-pad-2xs bg-secondary-container text-on-secondary-fixed font-semibold">SURETY_BACKED</span>
+</label>
+<span class="font-label-status text-label-status text-secondary font-bold tracking-wider">[ GUARANTEED ]</span>
+</div>
+<div class="relative flex items-center">
+<input class="w-full bg-surface-container-low font-label-code text-[18px] text-primary p-pad-md focus:bg-surface-container-lowest focus:outline-none transition-colors" id="pay_c" min="0.5" step="0.1" type="number" value="12.50"/>
+<div class="absolute right-4 font-label-code text-label-code text-on-surface font-bold pointer-events-none flex items-center gap-pad-2xs">
+<span>GEN</span>
+<span class="text-outline text-[11px]">TESTNET</span>
+</div>
+</div>
+<p class="font-body-sm text-[12px] text-on-surface-variant flex items-center gap-pad-2xs">
+<span class="material-symbols-outlined text-[14px] text-secondary">verified_user</span>
+<span>Protected by the Surety Vault. If B rugs, C still receives this payment.</span>
+</p>
+</div>
+<!-- Vault Premium -->
+<div class="flex flex-col gap-pad-2xs">
+<div class="flex items-center justify-between">
+<label class="font-headline-sm text-[15px] text-primary font-semibold flex items-center gap-pad-2xs" for="vault_premium">
+<span>Vault Premium</span>
+<span class="font-label-status text-[10px] px-pad-2xs bg-surface-container text-on-surface font-normal">PROTOCOL_FEE</span>
+</label>
+<span class="font-label-status text-label-status text-outline tracking-wider">COLLATERAL_TAX (7.14%)</span>
+</div>
+<div class="relative flex items-center">
+<input class="w-full bg-surface-container-low font-label-code text-[18px] text-primary p-pad-md focus:bg-surface-container-lowest focus:outline-none transition-colors" id="vault_premium" min="0.1" step="0.1" type="number" value="2.50"/>
+<div class="absolute right-4 font-label-code text-label-code text-on-surface font-bold pointer-events-none flex items-center gap-pad-2xs">
+<span>GEN</span>
+<span class="text-outline text-[11px]">TESTNET</span>
+</div>
+</div>
+<p class="font-body-sm text-[12px] text-on-surface-variant">
+                Stays in the underwriter pool on SETTLED_OK as protocol reserve yield.
+              </p>
+</div>
+<!-- Running Escrow Total Card (High Priority Mechanical Stacking) -->
+<div class="bg-primary-container text-on-primary p-pad-md relative overflow-hidden shadow-xl">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-pad-sm relative z-10">
+<div class="flex flex-col">
+<span class="font-label-status text-label-status text-on-primary-container tracking-wider uppercase">// CALCULATED_ESCROW_REQUIRED</span>
+<div class="flex items-baseline gap-pad-xs mt-pad-2xs">
+<span class="font-metric-huge text-metric-huge text-secondary-container tracking-tight" id="displayTotalEscrow">35.00</span>
+<span class="font-headline-sm text-headline-sm text-on-primary">GEN</span>
+</div>
+</div>
+<div class="flex flex-col sm:text-right">
+<span class="font-label-status text-label-status text-secondary-fixed-dim font-bold">[ PREFLIGHT_VALID ]</span>
+<span class="font-label-code text-[11px] text-on-primary-container mt-1">WALLET BAL: 4,820.50 GEN</span>
+<span class="font-label-code text-[11px] text-on-primary-container">RESERVE MARGIN: 99.27%</span>
+</div>
+</div>
+<div class="mt-pad-md pt-pad-xs font-body-sm text-body-sm text-on-primary-container flex items-center gap-pad-2xs">
+<span class="material-symbols-outlined text-[16px] text-secondary-container">info</span>
+<span>This exact amount leaves your wallet and sits in the job contract until adjudicate.</span>
+</div>
+</div>
+<!-- Bond Check Requirement Callout -->
+<div class="p-pad-md bg-surface-container">
+<div class="flex items-start gap-pad-sm">
+<div class="w-7 h-7 bg-primary text-on-primary flex items-center justify-center flex-shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">shield_with_heart</span>
+</div>
+<div class="flex flex-col gap-pad-2xs">
+<div class="flex items-center gap-pad-xs">
+<span class="font-headline-sm text-[14px] text-primary font-bold">Underwriter Bond Requirement</span>
+<span class="font-label-status text-[10px] bg-surface-container-highest px-pad-2xs text-on-surface font-semibold">50.00 GEN</span>
+</div>
+<p class="font-body-sm text-[13px] text-on-surface-variant leading-relaxed">
+<span class="font-semibold text-primary">50.00 GEN</span> will be locked by Writer B before execution begins. Downstream worker C will verify bond via <code class="font-label-code bg-surface-container-high px-1 text-primary">check_bond()</code> preflight before burning GPU compute.
+                  </p>
+</div>
+</div>
+</div>
+<!-- Action Control Buttons -->
+<div class="flex flex-col sm:flex-row items-center justify-between gap-pad-md pt-pad-sm">
+<div class="flex items-center gap-pad-md w-full sm:w-auto">
+<button class="w-full sm:w-auto px-pad-md py-pad-sm bg-surface-container text-on-surface font-headline-sm text-[14px] hover:bg-surface-container-high transition-colors flex items-center justify-center gap-pad-xs" type="button">
+<span class="material-symbols-outlined text-[16px]">arrow_back</span>
+<span>Back: Edit Brief</span>
+</button>
+<button class="px-pad-sm py-pad-sm text-outline font-label-code text-label-code hover:text-error transition-colors" type="button">
+                  Cancel
+                </button>
+</div>
+<button class="w-full sm:w-auto px-pad-lg py-pad-sm bg-primary text-on-primary font-headline-sm text-[14px] hover:bg-surface-container-highest hover:text-primary transition-all flex items-center justify-center gap-pad-xs shadow-md" type="button">
+<span>Next: Verify Bond &amp; Review</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</form>
+</div>
+</div>
+<!-- RIGHT COLUMN: Interactive DAG Visualization & Architectural Blueprint Panel (5 Cols) -->
+<div class="lg:col-span-5 flex flex-col gap-pad-md">
+<!-- DAG Preview Card -->
+<div class="bg-surface-container-lowest shadow-sm p-pad-md relative">
+<div class="flex items-center justify-between pb-pad-xs mb-pad-sm">
+<div class="flex items-center gap-pad-2xs font-label-code text-label-code">
+<span class="text-primary font-bold">DAG_TOPOLOGY_PREVIEW</span>
+<span class="text-outline">[v2.4]</span>
+</div>
+<span class="font-label-status text-[10px] bg-secondary-container text-on-secondary-fixed px-pad-2xs py-[1px] font-bold">
+              DETERMINISTIC
+            </span>
+</div>
+<p class="font-body-sm text-[12px] text-on-surface-variant mb-pad-md">
+            Live flow graph of 3-hop autonomous dispatch with collateral fallback logic.
+          </p>
+<!-- SVG Interactive Blueprint Canvas -->
+<div class="w-full bg-surface-container-low p-pad-sm relative">
+<div class="flex justify-between items-center text-[10px] font-label-code text-outline mb-2">
+<span>0x00 // ENTRY</span>
+<span>SYNCHRONOUS_EXEC</span>
+<span>0x02 // SINK</span>
+</div>
+<svg class="w-full h-auto" viewbox="0 0 420 310" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="20" id="dag-grid" patternunits="userSpaceOnUse" width="20">
+<path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(197, 198, 202, 0.4)" stroke-width="0.5"></path>
+</pattern>
+<marker id="arrow" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="5" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 9 5 L 0 9 z" fill="#191c1d"></path>
+</marker>
+<marker id="arrow-green" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="5" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 9 5 L 0 9 z" fill="#4f6600"></path>
+</marker>
+<marker id="arrow-red" markerheight="6" markerwidth="6" orient="auto-start-reverse" refx="5" refy="5" viewbox="0 0 10 10">
+<path d="M 0 1 L 9 5 L 0 9 z" fill="#ba1a1a"></path>
+</marker>
+</defs>
+<rect fill="url(#dag-grid)" height="310" width="420"></rect>
+<!-- Routing Path: Agent A -> Agent B -->
+<path d="M 95 65 L 145 65 L 145 135 L 175 135" fill="none" marker-end="url(#arrow)" stroke="#191c1d" stroke-width="2"></path>
+<!-- Routing Path: Agent B -> Agent C (Happy path) -->
+<path d="M 285 135 L 315 135 L 315 205 L 325 205" fill="none" marker-end="url(#arrow-green)" stroke="#4f6600" stroke-dasharray="3 3" stroke-width="2"></path>
+<!-- Fallback Bypass Routing: Surety Vault -> Agent C (Rug protection bypass) -->
+<path d="M 95 240 L 220 240 L 220 230 L 325 230" fill="none" marker-end="url(#arrow-red)" stroke="#ba1a1a" stroke-dasharray="4 2" stroke-width="1.5"></path>
+<!-- Node 1: Hop A (Research) -->
+<g transform="translate(15, 30)">
+<rect fill="#ffffff" height="70" stroke="#191c1d" stroke-width="1.5" width="80"></rect>
+<rect fill="#191c1d" height="18" width="80" x="0" y="0"></rect>
+<text fill="#ffffff" font-family="JetBrains Mono" font-size="9" font-weight="bold" text-anchor="middle" x="40" y="13">HOP_01</text>
+<text fill="#191c1d" font-family="Space Grotesk" font-size="11" font-weight="bold" text-anchor="middle" x="40" y="38">RESEARCH</text>
+<text fill="#75777a" font-family="JetBrains Mono" font-size="8" text-anchor="middle" x="40" y="52">AGENT_01</text>
+<text fill="#4f6600" font-family="JetBrains Mono" font-size="8" font-weight="bold" text-anchor="middle" x="40" y="63">0.00 GEN</text>
+</g>
+<!-- Node 2: Hop B (Writer) -->
+<g transform="translate(180, 100)">
+<rect fill="#ffffff" height="70" stroke="#191c1d" stroke-width="1.5" width="105"></rect>
+<rect fill="#191c1d" height="18" width="105" x="0" y="0"></rect>
+<text fill="#c0f500" font-family="JetBrains Mono" font-size="9" font-weight="bold" text-anchor="middle" x="52" y="13">HOP_02: WRITER</text>
+<text fill="#191c1d" font-family="Space Grotesk" font-size="12" font-weight="bold" text-anchor="middle" x="52" y="38">SYNTHESIZE</text>
+<text fill="#75777a" font-family="JetBrains Mono" font-size="9" text-anchor="middle" x="52" y="52">AGENT_02 (BONDED)</text>
+<text fill="#191c1d" font-family="JetBrains Mono" font-size="10" font-weight="bold" id="dag_node_b_val" text-anchor="middle" x="52" y="64">20.00 GEN</text>
+</g>
+<!-- Node 3: Hop C (Publisher) -->
+<g transform="translate(325, 175)">
+<rect fill="#ffffff" height="70" stroke="#4f6600" stroke-width="2" width="85"></rect>
+<rect fill="#4f6600" height="18" width="85" x="0" y="0"></rect>
+<text fill="#ffffff" font-family="JetBrains Mono" font-size="9" font-weight="bold" text-anchor="middle" x="42" y="13">HOP_03: PUB</text>
+<text fill="#191c1d" font-family="Space Grotesk" font-size="11" font-weight="bold" text-anchor="middle" x="42" y="38">PUBLISHER</text>
+<text fill="#75777a" font-family="JetBrains Mono" font-size="8" text-anchor="middle" x="42" y="52">WORKER_C</text>
+<text fill="#4f6600" font-family="JetBrains Mono" font-size="9" font-weight="bold" id="dag_node_c_val" text-anchor="middle" x="42" y="63">12.50 GEN</text>
+</g>
+<!-- Node: Surety Escrow Pool -->
+<g transform="translate(15, 210)">
+<rect fill="#f3f4f5" height="55" stroke="#ba1a1a" stroke-dasharray="2 2" stroke-width="1.2" width="80"></rect>
+<text fill="#ba1a1a" font-family="JetBrains Mono" font-size="8" font-weight="bold" text-anchor="middle" x="40" y="22">SURETY_VAULT</text>
+<text fill="#191c1d" font-family="Space Grotesk" font-size="10" font-weight="bold" id="dag_premium_val" text-anchor="middle" x="40" y="38">+2.50 GEN</text>
+<text fill="#75777a" font-family="JetBrains Mono" font-size="7" text-anchor="middle" x="40" y="49">POOL RESERVE</text>
+</g>
+<!-- Legend CAD crosshairs -->
+<text fill="#75777a" font-family="JetBrains Mono" font-size="8" text-anchor="end" x="390" y="295">REF_GRID_ID: 61997-TX40</text>
+</svg>
+</div>
+<!-- Dynamic Metrics Summary Panel -->
+<div class="mt-pad-md grid grid-cols-2 gap-pad-xs">
+<div class="p-pad-xs bg-surface-container-low">
+<span class="font-label-status text-[10px] text-outline block">BOND / ESCROW RATIO</span>
+<span class="font-label-code text-[14px] text-primary font-bold" id="statRatio">142.8%</span>
+<span class="font-label-status text-[9px] text-secondary block font-semibold">[HIGH ASSURANCE]</span>
+</div>
+<div class="p-pad-xs bg-surface-container-low">
+<span class="font-label-status text-[10px] text-outline block">FAILURE RECOVERY</span>
+<span class="font-label-code text-[14px] text-primary font-bold">100% COVERED</span>
+<span class="font-label-status text-[9px] text-outline block">AUTOMATIC SLASH</span>
+</div>
+</div>
+</div>
+<!-- Protocol Specification Blueprint Card -->
+<div class="bg-surface-container-lowest p-pad-md shadow-sm">
+<div class="flex items-center gap-pad-xs text-outline font-label-code text-label-code mb-pad-xs">
+<span class="material-symbols-outlined text-[16px]">receipt_long</span>
+<span class="font-bold text-primary">EXECUTION_RULES.md</span>
+</div>
+<div class="font-label-code text-[11px] text-on-surface-variant flex flex-col gap-pad-2xs leading-relaxed">
+<div class="flex justify-between py-1 bg-surface-container-low px-pad-xs">
+<span class="text-outline">1. CONSENSUS_QUORUM:</span>
+<span class="text-primary font-bold">GenLayer Validator Set (5/7)</span>
+</div>
+<div class="flex justify-between py-1 px-pad-xs">
+<span class="text-outline">2. WRITER_SLA_DEADLINE:</span>
+<span class="text-primary font-bold">7,200 sec (2.0 hrs)</span>
+</div>
+<div class="flex justify-between py-1 bg-surface-container-low px-pad-xs">
+<span class="text-outline">3. SLASH_ALLOCATION:</span>
+<span class="text-secondary font-bold">pay_C + Premium Refund</span>
+</div>
+<div class="flex justify-between py-1 px-pad-xs">
+<span class="text-outline">4. SETTLEMENT_TRIGGER:</span>
+<span class="text-primary font-bold">Proof of Publication Digest</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  (function() {
+    const payBInput = document.getElementById('pay_b');
+    const payCInput = document.getElementById('pay_c');
+    const premiumInput = document.getElementById('vault_premium');
+    const totalDisplay = document.getElementById('displayTotalEscrow');
+    
+    // DAG SVG dynamic node elements
+    const dagB = document.getElementById('dag_node_b_val');
+    const dagC = document.getElementById('dag_node_c_val');
+    const dagPrem = document.getElementById('dag_premium_val');
+    const statRatio = document.getElementById('statRatio');
+
+    function calculateAndUpdate() {
+      const bVal = parseFloat(payBInput.value) || 0;
+      const cVal = parseFloat(payCInput.value) || 0;
+      const premVal = parseFloat(premiumInput.value) || 0;
+
+      const total = bVal + cVal + premVal;
+      totalDisplay.textContent = total.toFixed(2);
+
+      // Update right side DAG text
+      if (dagB) dagB.textContent = bVal.toFixed(2) + ' GEN';
+      if (dagC) dagC.textContent = cVal.toFixed(2) + ' GEN';
+      if (dagPrem) dagPrem.textContent = '+' + premVal.toFixed(2) + ' GEN';
+
+      // Update Ratio (50 GEN underwriter bond vs total escrow)
+      if (statRatio) {
+        if (total > 0) {
+          const ratio = (50.0 / total) * 100;
+          statRatio.textContent = ratio.toFixed(1) + '%';
+        } else {
+          statRatio.textContent = '0.0%';
+        }
+      }
+    }
+
+    payBInput.addEventListener('input', calculateAndUpdate);
+    payCInput.addEventListener('input', calculateAndUpdate);
+    premiumInput.addEventListener('input', calculateAndUpdate);
+
+    // Initial pass
+    calculateAndUpdate();
+  })();
+</script></main><footer class="w-full bg-primary-container text-on-primary border-t border-inverse-surface"><div class="max-w-col-max-width mx-auto px-pad-lg py-pad-3xl"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-pad-xl pb-pad-2xl border-b border-inverse-surface/40"><div class="lg:col-span-2 flex flex-col gap-pad-sm"><div class="flex items-center gap-pad-xs"><span class="font-headline-sm text-headline-sm tracking-tight text-on-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-surface-container-highest text-on-surface">PROT_CORE</span></div><p class="font-headline-sm text-headline-sm text-secondary-container tracking-tight mt-pad-2xs">The next agent still gets paid.</p><p class="font-body-sm text-body-sm text-on-primary-container max-w-sm mt-pad-xs">Cryptographic orchestration, surety vaults, and deterministic state resolution for autonomous multi-agent pipelines on GenLayer.</p></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Product</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Execution Ledger</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Pipeline Canvas</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Protocol</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Registry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Fault Recovery</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Vault</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Pools</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Collateral Staking</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Bonding Curve</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Yield Telemetry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Liquidity Gates</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Skill</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Modules</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">LLM Orchestrators</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Zero-Knowledge Verifiers</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Tool Interfaces</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Consensus Rules</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Resources</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Developer Docs</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Smart Contracts</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">SDK &amp; CLI</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Network Explorer</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Security Audits</a></div></div><div class="pt-pad-lg flex flex-col sm:flex-row items-center justify-between gap-pad-md font-label-code text-label-code text-on-primary-container"><div class="flex items-center gap-pad-md"><span class="flex items-center gap-pad-2xs text-secondary-fixed-dim"><span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary-fixed-dim animate-pulse"></span><span>SYSTEM_CORE_LIVE</span></span><span>BUILD 2.4.0-REV-61997</span></div><div><span>GenLayer · Studio-dev 61997 · Test GEN</span></div></div></div></footer></body></html>

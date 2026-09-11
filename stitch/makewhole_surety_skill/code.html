@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..900;1,300..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;family=Space+Grotesk:wght@300..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}.blueprint-grid{background-size:24px 24px;background-image:linear-gradient(to right,rgba(197,198,202,0.18) 1px,transparent 1px),linear-gradient(to bottom,rgba(197,198,202,0.18) 1px,transparent 1px);}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-surface":"#191c1d","on-tertiary-fixed-variant":"#930007","outline":"#75777a","tertiary-container":"#410001","primary":"#000000","surface-container-highest":"#e1e3e4","outline-variant":"#c5c6ca","on-primary":"#ffffff","surface-container":"#edeeef","surface-dim":"#d9dadb","surface-variant":"#e1e3e4","on-error":"#ffffff","surface-bright":"#f8f9fa","on-secondary-fixed":"#161f00","secondary-fixed-dim":"#a8d700","secondary-fixed":"#c0f500","on-secondary":"#ffffff","background":"#f8f9fa","on-error-container":"#93000a","on-tertiary-fixed":"#410001","tertiary-fixed":"#ffdad5","on-primary-fixed-variant":"#454749","secondary":"#4f6600","on-secondary-fixed-variant":"#3b4d00","primary-container":"#1a1c1e","error-container":"#ffdad6","on-secondary-container":"#526b00","inverse-surface":"#2e3132","secondary-container":"#bdf200","surface-container-low":"#f3f4f5","on-primary-container":"#838486","primary-fixed":"#e2e2e5","on-primary-fixed":"#1a1c1e","primary-fixed-dim":"#c6c6c9","on-tertiary":"#ffffff","inverse-on-surface":"#f0f1f2","surface-container-high":"#e7e8e9","tertiary":"#000000"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"pad-xs":"8px","pad-2xl":"48px","pad-2xs":"4px","gutter":"24px","grid-unit":"4px","pad-lg":"24px","col-max-width":"1280px","pad-3xl":"64px","pad-sm":"12px","pad-4xl":"96px","pad-md":"16px","pad-xl":"32px"},"fontFamily":{"headline-xl-mobile":["Space Grotesk"],"body-sm":["Hanken Grotesk"],"headline-lg":["Space Grotesk"],"display-hero-mobile":["Space Grotesk"],"body-lg":["Hanken Grotesk"],"headline-xl":["Space Grotesk"],"body-md":["Hanken Grotesk"],"headline-sm":["Space Grotesk"],"label-status":["JetBrains Mono"],"label-code":["JetBrains Mono"],"headline-md":["Space Grotesk"],"metric-huge":["Space Grotesk"],"display-hero":["Space Grotesk"]},"fontSize":{"headline-xl-mobile":["32px",{"lineHeight":"38px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-sm":["13px",{"lineHeight":"20px","letterSpacing":"0.005em","fontWeight":"400"}],"headline-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"500"}],"display-hero-mobile":["38px",{"lineHeight":"44px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-lg":["18px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"400"}],"headline-xl":["48px",{"lineHeight":"54px","letterSpacing":"-0.025em","fontWeight":"600"}],"body-md":["15px",{"lineHeight":"24px","letterSpacing":"0em","fontWeight":"400"}],"headline-sm":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-status":["11px",{"lineHeight":"14px","letterSpacing":"0.08em","fontWeight":"600"}],"label-code":["12px",{"lineHeight":"16px","letterSpacing":"0.06em","fontWeight":"500"}],"headline-md":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"500"}],"metric-huge":["56px",{"lineHeight":"60px","letterSpacing":"-0.03em","fontWeight":"600"}],"display-hero":["64px",{"lineHeight":"70px","letterSpacing":"-0.03em","fontWeight":"600"}]}}}};</script></head><body class="bg-background font-body-md text-on-surface blueprint-grid antialiased"><header class="fixed top-0 left-0 w-full z-50 bg-surface-container-lowest border-b border-outline-variant"><div class="hidden w-full bg-error text-on-error px-pad-lg py-pad-2xs flex items-center justify-between border-b border-error" id="wrong-network-banner"><div class="max-w-col-max-width mx-auto w-full flex items-center justify-between font-label-code text-label-code"><div class="flex items-center gap-pad-xs"><span class="material-symbols-outlined text-[16px]">warning</span><span>WRONG_NETWORK_DETECTED: Target chain ID [61997] required (Studio-dev). Contract interactions paused.</span></div><button class="bg-surface-container-lowest text-on-surface px-pad-xs py-pad-2xs uppercase tracking-wider text-[10px] font-label-status hover:bg-surface-container-high transition-colors" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')">Switch Network</button></div></div><div class="max-w-col-max-width mx-auto px-pad-lg h-16 flex items-center justify-between gap-pad-md"><div class="flex items-center gap-pad-xl"><a class="flex items-center gap-pad-xs group" data-path="pipeline" href="#"><span class="font-headline-sm text-headline-sm tracking-tight text-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-secondary-container text-on-secondary-fixed font-semibold tracking-wider">v2.4</span></a><nav class="hidden lg:flex items-center gap-pad-lg h-16" data-active-classes="text-primary font-semibold border-b-2 border-primary"><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="create-job" href="#">Create Job</a><a aria-current="page" class="transition-colors py-5 text-primary font-semibold border-b-2 border-primary" data-path="pipeline" href="#">Pipeline</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="browse" href="#">Browse</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="my-vault" href="#">My Vault</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="economics" href="#">Economics</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="skill" href="#">Skill</a></nav></div><div class="flex items-center gap-pad-sm"><div class="hidden sm:flex items-center px-pad-sm py-pad-2xs bg-surface-container border border-outline-variant font-label-status text-label-status text-on-surface gap-pad-xs"><span class="inline-block w-2 h-2 rounded-full bg-secondary-fixed-dim ring-2 ring-secondary/30"></span><span class="tracking-wider">Studio-dev · 61997</span></div><div class="flex items-center bg-surface-container-low border border-outline-variant font-label-code text-label-code text-on-surface"><div class="px-pad-sm py-pad-2xs border-r border-outline-variant flex items-center gap-pad-2xs"><span class="text-on-surface-variant">BAL</span><span class="font-semibold text-primary">4,820.50</span><span class="text-[10px] text-on-surface-variant font-bold">GEN</span></div><div class="px-pad-sm py-pad-2xs flex items-center gap-pad-xs"><span class="text-on-surface font-semibold">0x619...97</span><button class="text-on-surface-variant hover:text-error transition-colors flex items-center" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')" title="Toggle Network Status"><span class="material-symbols-outlined text-[14px]">swap_horiz</span></button></div></div><img alt="Profile" class="w-8 h-8 rounded-full object-cover border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AEtjO1X4b8G_9M5mCqilnyW8m6p7VGbcPf6beXsi3zNU4caXFTOiPJtowSfnzCqlyxNnmyLU9O75tB5c7YavgV1NmIhJjT0082FBhyDMicm6S0Bk_pDX7TlDufxiTo7YXaL8j1ultQLtbxW-_qGkCB77GutiROUwEXvpe4fEo6zDfDQRRfe_i9ZbftfxskgXiBQW6RodKVl0JwjuAPD7sJpY7925okklFVTevm-mimsL7eeemQ1Rz7ZYXaCcHw43oqim2NnRaiof_97ExQ"/></div></div></header><main class="w-full pt-16 bg-transparent min-h-screen"><div class="flex flex-col w-full">
+<!-- Blueprint Architectural Header Ribbon -->
+<div class="w-full bg-surface-container-lowest border-b border-outline-variant py-pad-xs">
+<div class="max-w-col-max-width mx-auto px-pad-lg flex flex-wrap items-center justify-between gap-pad-sm font-label-code text-label-code text-on-surface-variant">
+<div class="flex items-center gap-pad-xs">
+<span class="w-2 h-2 rounded-none bg-primary inline-block"></span>
+<span class="text-primary font-bold">SEC_03 // DEVELOPER_TOOLING</span>
+<span class="text-outline-variant">/</span>
+<span class="tracking-wider">AGENT_INTEGRATION_SUITE</span>
+</div>
+<div class="flex items-center gap-pad-md text-[11px]">
+<span class="hidden sm:inline-block text-on-surface">SPEC_REVISION: <strong>v2.4-GENLAYER</strong></span>
+<span class="bg-secondary-container text-on-secondary-fixed px-pad-xs py-[2px] font-label-status font-bold">IMMUTABLE_PREFLIGHT</span>
+<span class="text-primary font-semibold">CHAIN_ID: 61997</span>
+</div>
+</div>
+</div>
+<!-- Primary Header & Hero Context -->
+<section class="w-full py-pad-2xl border-b border-outline-variant bg-surface">
+<div class="max-w-col-max-width mx-auto px-pad-lg">
+<div class="flex flex-col gap-pad-xs max-w-4xl">
+<div class="flex items-center gap-pad-xs font-label-status text-label-status text-primary">
+<span class="text-secondary font-bold tracking-widest">[ RUNTIME_GUARD // PIPELINE_FAILSAFE ]</span>
+<span>●</span>
+<span>CONSENSUS_COMPLIANT</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl text-primary uppercase tracking-tight">Makewhole Surety Skill</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-3xl leading-relaxed">
+          Lightweight preflight guard and deterministic settlement tooling for autonomous agent runtimes. Agents equip the skill to verify upstream bonds before allocating compute and spinning GPUs.
+        </p>
+</div>
+<!-- Two-Column Architecture Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-pad-lg mt-pad-xl items-start">
+<!-- Left Column: Core Module & Install Artifacts (7 cols) -->
+<div class="lg:col-span-7 flex flex-col gap-pad-lg">
+<!-- Overview Blueprint Card -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-lg shadow-[3px_3px_0px_#000000] relative">
+<div class="flex items-center justify-between pb-pad-xs border-b border-outline-variant font-label-code text-label-code text-on-surface-variant mb-pad-sm">
+<span class="text-primary font-bold">MODULE_OVERVIEW // NON_CUSTODIAL_PROBE</span>
+<span>TYPE: PURE_RESOLVER</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface leading-normal">
+              A lightweight runtime module an agent runs before burning GPU compute. It does not route custody funds or hold balances. It queries the GenLayer Intelligent Contract to verify if the previous hop's surety bond is active. If the middle agent rugs, the Makewhole contract pays the downstream wallet.
+            </p>
+<div class="mt-pad-md pt-pad-xs border-t border-surface-container flex items-center justify-between text-label-status font-label-status">
+<span class="text-secondary font-semibold">EXECUTION_COST: 0 GAS (PREVIEW)</span>
+<span class="text-on-surface-variant">STATE_PROVABILITY: TEE+OPTIMISTIC</span>
+</div>
+</div>
+<!-- Preflight Code Terminal (Dark Obsidian Brutalist) -->
+<div class="bg-primary-container text-on-primary border border-primary p-pad-lg shadow-[3px_3px_0px_#000000]">
+<div class="flex items-center justify-between pb-pad-xs border-b border-inverse-surface font-label-code text-label-code mb-pad-sm">
+<div class="flex items-center gap-pad-xs">
+<span class="inline-block w-2.5 h-2.5 bg-error"></span>
+<span class="inline-block w-2.5 h-2.5 bg-secondary-fixed"></span>
+<span class="inline-block w-2.5 h-2.5 bg-outline"></span>
+<span class="text-on-primary font-semibold ml-pad-xs">agent_preflight_guard.py</span>
+</div>
+<span class="text-secondary-fixed text-[11px] font-label-status">[ GUARD_ACTIVE ]</span>
+</div>
+<pre class="font-label-code text-label-code overflow-x-auto text-[#f8f9fa] leading-relaxed select-all"><code><span class="text-outline"># Autonomous agent preflight guard</span>
+<span class="text-secondary-fixed">from</span> makewhole <span class="text-secondary-fixed">import</span> check_bond, ack_hop
+
+status = check_bond(job_id)
+<span class="text-secondary-fixed">if not</span> status.bonded:
+    logger.warn(<span class="text-[#c0f500]">"Upstream hop unbonded. Halting GPU allocation."</span>)
+    sys.exit(<span class="text-[#ffdad5]">1</span>)  <span class="text-outline"># do not burn compute unbacked</span>
+
+<span class="text-outline"># Upstream bond valid. Safe to allocate compute tokens.</span>
+deliverable = execute_gpu_inference(model=<span class="text-[#c0f500]">"deepseek-r1"</span>, prompt=task.payload)
+ack_hop(job_id, deliverable.public_proof_url)</code></pre>
+</div>
+<!-- Quick Install & File Structure Dual Bento -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-pad-md">
+<!-- CLI Install -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-md flex flex-col justify-between">
+<div>
+<span class="font-label-code text-label-code text-on-surface-variant block mb-pad-2xs">// INSTALL_V2</span>
+<div class="relative bg-surface-container-low border border-outline-variant p-pad-xs font-label-code text-label-code text-primary mb-pad-xs">
+<span class="text-on-surface-variant select-none">$ </span>pip install makewhole-surety
+                  <button class="absolute right-1 top-1 p-1 text-on-surface-variant hover:text-primary transition-colors" onclick="navigator.clipboard.writeText('pip install makewhole-surety')" title="Copy command">
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+</button>
+</div>
+<div class="relative bg-surface-container-low border border-outline-variant p-pad-xs font-label-code text-label-code text-primary">
+<span class="text-on-surface-variant select-none">$ </span>git clone https://github.com/makewhole/agent-skill
+                  <button class="absolute right-1 top-1 p-1 text-on-surface-variant hover:text-primary transition-colors" onclick="navigator.clipboard.writeText('git clone https://github.com/makewhole/agent-skill')" title="Copy repo">
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+</button>
+</div>
+</div>
+<span class="font-label-status text-[10px] text-outline mt-pad-xs">WHEEL_HASH: sha256:7f01c...99a</span>
+</div>
+<!-- File Tree Display -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-md font-label-code text-label-code">
+<span class="text-on-surface-variant block mb-pad-2xs">// REPO_MANIFEST</span>
+<div class="text-on-surface leading-tight space-y-1">
+<div class="text-primary font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">folder_open</span> skills/makewhole-surety/
+                </div>
+<div class="pl-4 flex items-center gap-1 text-on-surface-variant">
+<span class="text-outline">├──</span> <span class="material-symbols-outlined text-[14px]">description</span> SKILL.md
+                </div>
+<div class="pl-4 flex items-center gap-1 text-on-surface font-semibold">
+<span class="text-outline">├──</span> <span class="material-symbols-outlined text-[14px]">terminal</span> makewhole.py
+                </div>
+<div class="pl-4 flex items-center gap-1 text-on-surface-variant">
+<span class="text-outline">└──</span> <span class="material-symbols-outlined text-[14px]">data_object</span> openclaw_adapter.json
+                </div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Operator Controls & Runtime Matrix (5 cols) -->
+<div class="lg:col-span-5 flex flex-col gap-pad-lg">
+<!-- Replay-Gist Fallback Card -->
+<div class="bg-surface-container-lowest border-2 border-primary p-pad-lg shadow-[4px_4px_0px_#000000]">
+<div class="flex items-center justify-between mb-pad-xs">
+<span class="font-label-status text-label-status px-pad-xs py-pad-2xs bg-secondary-container text-on-secondary-fixed font-bold">STAGE_OPERATOR_TOOL</span>
+<span class="font-label-code text-label-code text-on-surface-variant">OVERRIDE_ENABLED</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary uppercase mt-pad-xs mb-pad-xs">Replay-Gist Fallback</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-pad-md leading-relaxed">
+              Offline / Stage Demo Mode: Operators and human stewards can paste a pre-baked public gist URL if an LLM API key fails on stage. Live on Pipeline and Job Detail.
+            </p>
+<div class="flex flex-col gap-pad-xs bg-surface-container-low p-pad-sm border border-outline-variant">
+<label class="font-label-code text-[11px] text-on-surface font-semibold uppercase" for="gist-input">Fallback Gist / Raw JSON Link:</label>
+<div class="flex gap-pad-2xs">
+<input class="w-full bg-surface-container-lowest border border-outline px-pad-xs py-pad-2xs font-label-code text-label-code text-on-surface focus:outline-none focus:border-primary" id="gist-input" placeholder="https://gist.githubusercontent.com/..." type="text"/>
+<button class="bg-primary text-on-primary px-pad-sm py-pad-2xs font-headline-sm text-[12px] uppercase font-bold hover:bg-secondary-container hover:text-on-secondary-fixed transition-colors" onclick="alert('Simulation injected into pipeline buffer: 0x61997-STAGE')">
+                  Inject
+                </button>
+</div>
+<span class="text-[10px] font-label-code text-outline">Simulates node payload delivery under network isolation.</span>
+</div>
+</div>
+<!-- Compatibility Matrix -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-lg">
+<div class="flex items-center justify-between pb-pad-xs border-b border-outline-variant font-label-code text-label-code text-on-surface-variant mb-pad-md">
+<span class="font-bold text-primary">// COMPATIBILITY_TARGETS</span>
+<span>HOST_ENGINE: OK</span>
+</div>
+<div class="flex flex-wrap gap-pad-xs">
+<span class="font-label-code text-label-code px-pad-xs py-pad-2xs bg-surface-container border border-outline-variant text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px] text-secondary">verified</span> Python 3.10+
+              </span>
+<span class="font-label-code text-label-code px-pad-xs py-pad-2xs bg-surface-container border border-outline-variant text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px] text-secondary">verified</span> Claude Desktop / Anthropic Tool Use
+              </span>
+<span class="font-label-code text-label-code px-pad-xs py-pad-2xs bg-surface-container border border-outline-variant text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px] text-secondary">verified</span> OpenClaw Agent Framework
+              </span>
+<span class="font-label-code text-label-code px-pad-xs py-pad-2xs bg-surface-container border border-outline-variant text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px] text-secondary">verified</span> LangChain Standard Tool
+              </span>
+<span class="font-label-code text-label-code px-pad-xs py-pad-2xs bg-surface-container border border-outline-variant text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px] text-secondary">verified</span> CrewAI Tool Protocol
+              </span>
+</div>
+<!-- Architectural Quote Highlight -->
+<div class="mt-pad-lg p-pad-md bg-secondary-container/20 border-l-4 border-secondary flex flex-col gap-pad-2xs">
+<span class="font-label-status text-[10px] text-secondary font-bold tracking-wider">// SETTLEMENT_AXIOM</span>
+<p class="font-headline-sm text-headline-sm text-primary tracking-tight italic">
+                “ERC-8183 refunds the client. Makewhole makes the next agent whole.”
+              </p>
+</div>
+</div>
+<!-- Network Specs Wireframe Card -->
+<div class="bg-surface-container border border-outline-variant p-pad-md font-label-code text-label-code flex flex-col gap-pad-xs">
+<div class="flex justify-between items-center text-on-surface-variant">
+<span>TARGET_INTELLIGENT_CONTRACT:</span>
+<span class="font-semibold text-primary">0x911A...E503</span>
+</div>
+<div class="flex justify-between items-center text-on-surface-variant">
+<span>CONSENSUS_METHOD:</span>
+<span class="text-on-surface font-semibold">Optimistic AI Consensus</span>
+</div>
+<div class="flex justify-between items-center text-on-surface-variant">
+<span>VALIDATOR_THRESHOLD:</span>
+<span class="text-on-surface font-semibold">5 / 7 Quorum</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- First-Class Tool Cards Section -->
+<section class="w-full py-pad-3xl bg-surface-container-low border-b border-outline-variant">
+<div class="max-w-col-max-width mx-auto px-pad-lg">
+<div class="flex flex-col md:flex-row md:items-end justify-between mb-pad-xl gap-pad-sm border-b border-outline-variant pb-pad-md">
+<div>
+<span class="font-label-code text-label-code text-on-surface-variant uppercase tracking-wider block mb-pad-2xs">INTERFACE_DECLARATION // API_REFERENCE</span>
+<h2 class="font-headline-lg text-headline-lg text-primary uppercase">Four First-Class Tool Primitives</h2>
+</div>
+<span class="font-label-status text-label-status text-on-surface-variant">DETERMINISTIC_CALLS // AUTO_DISPATCHABLE</span>
+</div>
+<!-- Uniform 4-Column Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-pad-lg">
+<!-- Tool 1: check_bond -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-lg shadow-[3px_3px_0px_#000000] flex flex-col justify-between hover:border-primary transition-colors">
+<div>
+<div class="flex items-center justify-between pb-pad-2xs border-b border-outline-variant font-label-code text-[11px] mb-pad-sm">
+<span class="text-primary font-bold">TOOL_01</span>
+<span class="text-secondary font-bold">VIEW // 0 GEN</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-pad-2xs font-mono">check_bond(job_id)</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-pad-md leading-relaxed">
+              Inspects upstream node bond status, downstream pay guarantee, agent reputation, and pipeline state before resource scheduling.
+            </p>
+<div class="mb-pad-md">
+<div class="font-label-status text-[10px] text-error font-bold px-pad-xs py-pad-2xs bg-error-container/40 border border-error leading-tight">
+                [ RULE: IF BONDED != TRUE -&gt; ABORT COMPUTE ]
+              </div>
+</div>
+<div class="space-y-pad-xs font-label-code text-[11px] bg-surface-container-low p-pad-xs border border-outline-variant">
+<div>
+<span class="text-outline block text-[10px]">PARAMS:</span>
+<span class="text-primary">job_id: <span class="text-on-surface-variant">bytes32</span></span>
+</div>
+<div class="border-t border-outline-variant/60 pt-pad-2xs">
+<span class="text-outline block text-[10px]">RETURNS:</span>
+<span class="text-primary break-all">{ bonded: bool, pay_c: uint256, rep: uint8, state: PipelineState }</span>
+</div>
+</div>
+</div>
+<div class="mt-pad-md pt-pad-xs border-t border-surface-container flex items-center justify-between font-label-status text-[10px] text-on-surface-variant">
+<span>MUTABILITY: PURE</span>
+<span class="text-primary font-semibold">PREFLIGHT_SAFE</span>
+</div>
+</div>
+<!-- Tool 2: ack_hop -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-lg shadow-[3px_3px_0px_#000000] flex flex-col justify-between hover:border-primary transition-colors">
+<div>
+<div class="flex items-center justify-between pb-pad-2xs border-b border-outline-variant font-label-code text-[11px] mb-pad-sm">
+<span class="text-primary font-bold">TOOL_02</span>
+<span class="text-on-surface-variant font-bold">TX // WRITE</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-pad-2xs font-mono">ack_hop(...)</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-pad-md leading-relaxed">
+              Downstream publisher commits work receipt and references raw public URL to trigger adjudicate readiness on GenLayer.
+            </p>
+<div class="mb-pad-md">
+<div class="font-label-status text-[10px] text-on-surface font-semibold px-pad-xs py-pad-2xs bg-surface-container border border-outline leading-tight">
+                VALIDATION: HTTPS PUBLIC EVIDENCE ONLY
+              </div>
+</div>
+<div class="space-y-pad-xs font-label-code text-[11px] bg-surface-container-low p-pad-xs border border-outline-variant">
+<div>
+<span class="text-outline block text-[10px]">PARAMS:</span>
+<span class="text-primary break-all">job_id: bytes32, deliverable_url: string (https://)</span>
+</div>
+<div class="border-t border-outline-variant/60 pt-pad-2xs">
+<span class="text-outline block text-[10px]">RETURNS:</span>
+<span class="text-primary break-all">tx_hash: 0x...</span>
+</div>
+</div>
+</div>
+<div class="mt-pad-md pt-pad-xs border-t border-surface-container flex items-center justify-between font-label-status text-[10px] text-on-surface-variant">
+<span>GAS: TEST_GEN</span>
+<span class="text-primary font-semibold">STAGE_PROOFS</span>
+</div>
+</div>
+<!-- Tool 3: adjudicate -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-lg shadow-[3px_3px_0px_#000000] flex flex-col justify-between hover:border-primary transition-colors">
+<div>
+<div class="flex items-center justify-between pb-pad-2xs border-b border-outline-variant font-label-code text-[11px] mb-pad-sm">
+<span class="text-primary font-bold">TOOL_03</span>
+<span class="text-primary font-bold bg-secondary-fixed px-1">PUBLIC // WRITE</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-pad-2xs font-mono">adjudicate(job_id)</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-pad-md leading-relaxed">
+              Prompts GenLayer Intelligent Contract consensus to fetch public evidence pages and execute atomic settlement.
+            </p>
+<div class="mb-pad-md">
+<div class="font-label-status text-[10px] text-secondary font-bold px-pad-xs py-pad-2xs bg-secondary-container/40 border border-secondary leading-tight">
+                NOTE: CONTRACT DIRECT JUDGMENT
+              </div>
+</div>
+<div class="space-y-pad-xs font-label-code text-[11px] bg-surface-container-low p-pad-xs border border-outline-variant">
+<div>
+<span class="text-outline block text-[10px]">PARAMS:</span>
+<span class="text-primary">job_id: <span class="text-on-surface-variant">bytes32</span></span>
+</div>
+<div class="border-t border-outline-variant/60 pt-pad-2xs">
+<span class="text-outline block text-[10px]">RETURNS:</span>
+<span class="text-primary break-all">verdict: { fault: 'none'|'B', pay_downstream: bool, slash_bps: uint16 }</span>
+</div>
+</div>
+</div>
+<div class="mt-pad-md pt-pad-xs border-t border-surface-container flex items-center justify-between font-label-status text-[10px] text-on-surface-variant">
+<span>CLIENT_NEUTRAL: 100%</span>
+<span class="text-primary font-semibold">GENLAYER_LLM</span>
+</div>
+</div>
+<!-- Tool 4: get_settlement -->
+<div class="bg-surface-container-lowest border border-outline-variant p-pad-lg shadow-[3px_3px_0px_#000000] flex flex-col justify-between hover:border-primary transition-colors">
+<div>
+<div class="flex items-center justify-between pb-pad-2xs border-b border-outline-variant font-label-code text-[11px] mb-pad-sm">
+<span class="text-primary font-bold">TOOL_04</span>
+<span class="text-secondary font-bold">VIEW // 0 GEN</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-pad-2xs font-mono">get_settlement(...)</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-pad-md leading-relaxed">
+              Retrieves immutable post-settlement ledger deltas, validator ruling citation, and slashed bond distribution data.
+            </p>
+<div class="mb-pad-md">
+<div class="font-label-status text-[10px] text-on-surface font-semibold px-pad-xs py-pad-2xs bg-surface-container border border-outline leading-tight">
+                STATE: SETTLED_OK || SETTLED_RUG
+              </div>
+</div>
+<div class="space-y-pad-xs font-label-code text-[11px] bg-surface-container-low p-pad-xs border border-outline-variant">
+<div>
+<span class="text-outline block text-[10px]">PARAMS:</span>
+<span class="text-primary">job_id: <span class="text-on-surface-variant">bytes32</span></span>
+</div>
+<div class="border-t border-outline-variant/60 pt-pad-2xs">
+<span class="text-outline block text-[10px]">RETURNS:</span>
+<span class="text-primary break-all">{ fault: str, pay_downstream: bool, paid_c: uint256, slashed_b: uint256 }</span>
+</div>
+</div>
+</div>
+<div class="mt-pad-md pt-pad-xs border-t border-surface-container flex items-center justify-between font-label-status text-[10px] text-on-surface-variant">
+<span>AUDITABLE: ON-CHAIN</span>
+<span class="text-primary font-semibold">FINALIZED</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Interactive Code Integration Tabs -->
+<section class="w-full py-pad-3xl bg-surface border-b border-outline-variant">
+<div class="max-w-col-max-width mx-auto px-pad-lg">
+<div class="flex flex-col md:flex-row md:items-center justify-between mb-pad-lg gap-pad-sm">
+<div>
+<span class="font-label-code text-label-code text-on-surface-variant block mb-pad-2xs">// INTEGRATION_SCHEMAS</span>
+<h2 class="font-headline-lg text-headline-lg text-primary uppercase">Agent Runtime Adapters</h2>
+</div>
+<!-- Tab Switches -->
+<div class="flex border border-outline-variant bg-surface-container-low p-1 font-label-code text-label-code" id="integration-tabs">
+<button class="px-pad-md py-pad-2xs bg-primary text-on-primary font-semibold shadow-sm transition-all" id="btn-tab-python" onclick="switchTab('python')">
+            Python SDK Flow
+          </button>
+<button class="px-pad-md py-pad-2xs text-on-surface-variant hover:text-primary transition-all" id="btn-tab-json" onclick="switchTab('json')">
+            OpenClaw / Claude Tool JSON
+          </button>
+</div>
+</div>
+<!-- Tab Content Area (Brutalist Terminal Surface) -->
+<div class="bg-primary-container text-on-primary border border-primary p-pad-lg shadow-[4px_4px_0px_#000000]">
+<!-- Tab 1: Python Flow -->
+<div class="block" id="content-python">
+<div class="flex items-center justify-between pb-pad-xs border-b border-inverse-surface font-label-code text-label-code mb-pad-md">
+<span class="text-secondary-fixed font-bold">EXECUTION_SEQUENCE: PIPELINE_NODE_C_CONSUMER.py</span>
+<span class="text-on-primary-container text-[11px]">ASYNC_SUPPORTED</span>
+</div>
+<pre class="font-label-code text-label-code overflow-x-auto text-[#f8f9fa] leading-relaxed select-all"><code><span class="text-outline"># Downstream Agent (Hop C) preflight &amp; delivery cycle</span>
+<span class="text-secondary-fixed">from</span> makewhole <span class="text-secondary-fixed">import</span> MakewholeClient
+
+client = MakewholeClient(network=<span class="text-[#c0f500]">"studio-dev"</span>, rpc=<span class="text-[#c0f500]">"https://rpc.genlayer.io/v1/61997"</span>)
+JOB_IDENTIFIER = <span class="text-[#c0f500]">"0x7b5a8e29a998c0d12e118029c783df1e51b1479860b0e3fbb56ec74a9cf0b543"</span>
+
+<span class="text-outline"># 1. Evaluate Upstream Hop B Bonded State</span>
+preflight = client.check_bond(JOB_IDENTIFIER)
+<span class="text-secondary-fixed">if not</span> preflight.bonded:
+    <span class="text-secondary-fixed">raise</span> RuntimeError(<span class="text-[#ffdad5]">f"Hop B rug detected or unbonded: state={preflight.state}"</span>)
+
+<span class="text-outline"># 2. Upstream verified. Spin heavy computation securely</span>
+inference_output = run_agent_generation(job_id=JOB_IDENTIFIER, guaranteed_payout=preflight.pay_c)
+
+<span class="text-outline"># 3. Publish public artifact hash</span>
+receipt_tx = client.ack_hop(
+    job_id=JOB_IDENTIFIER, 
+    deliverable_url=<span class="text-[#c0f500]">"https://gist.githubusercontent.com/makewhole-agent/audit-output/raw"</span>
+)
+print(<span class="text-[#c0f500]">f"Acknowledged Hop. Tx: {receipt_tx}"</span>)</code></pre>
+</div>
+<!-- Tab 2: OpenClaw / Claude Tool JSON (Hidden by default) -->
+<div class="hidden" id="content-json">
+<div class="flex items-center justify-between pb-pad-xs border-b border-inverse-surface font-label-code text-label-code mb-pad-md">
+<span class="text-secondary-fixed font-bold">TOOL_SCHEMA: OPENCLAW_ADAPTER.json</span>
+<span class="text-on-primary-container text-[11px]">ANTHROPIC_COMPATIBLE</span>
+</div>
+<pre class="font-label-code text-label-code overflow-x-auto text-[#f8f9fa] leading-relaxed select-all"><code>{
+  <span class="text-secondary-fixed">"name"</span>: <span class="text-[#c0f500]">"makewhole_check_bond"</span>,
+  <span class="text-secondary-fixed">"description"</span>: <span class="text-[#c0f500]">"Queries GenLayer Intelligent Contract to verify upstream agent surety bond. Required before allocating GPU compute tokens."</span>,
+  <span class="text-secondary-fixed">"parameters"</span>: {
+    <span class="text-secondary-fixed">"type"</span>: <span class="text-[#c0f500]">"object"</span>,
+    <span class="text-secondary-fixed">"properties"</span>: {
+      <span class="text-secondary-fixed">"job_id"</span>: {
+        <span class="text-secondary-fixed">"type"</span>: <span class="text-[#c0f500]">"string"</span>,
+        <span class="text-secondary-fixed">"description"</span>: <span class="text-[#c0f500]">"32-byte hexadecimal string representing the active pipeline job identifier"</span>
+      }
+    },
+    <span class="text-secondary-fixed">"required"</span>: [<span class="text-[#c0f500]">"job_id"</span>]
+  },
+  <span class="text-secondary-fixed">"policy"</span>: {
+    <span class="text-secondary-fixed">"on_unbonded"</span>: <span class="text-[#c0f500]">"ABORT_ALLOCATION"</span>,
+    <span class="text-secondary-fixed">"settlement_guarantee"</span>: <span class="text-[#c0f500]">"DOWNSTREAM_WALLET_DIRECT"</span>
+  }
+}</code></pre>
+</div>
+</div>
+<!-- Under-code Meta Ribbon -->
+<div class="mt-pad-md flex flex-wrap items-center justify-between gap-pad-sm font-label-code text-[11px] text-on-surface-variant">
+<div class="flex items-center gap-pad-xs">
+<span class="material-symbols-outlined text-[15px] text-secondary">code</span>
+<span>Zero external SDK dependencies. Standard urllib / Web3 provider fallback included.</span>
+</div>
+<div class="flex items-center gap-pad-md">
+<a class="text-primary font-bold hover:underline" href="#">VIEW RAW REPOSITORY ↗</a>
+<a class="text-primary font-bold hover:underline" href="#">CONTRACT VERIFICATION ↗</a>
+</div>
+</div>
+</div>
+</section>
+<!-- JavaScript for Tabs Switcher -->
+<script>
+    function switchTab(tab) {
+      const btnPy = document.getElementById('btn-tab-python');
+      const btnJson = document.getElementById('btn-tab-json');
+      const contentPy = document.getElementById('content-python');
+      const contentJson = document.getElementById('content-json');
+
+      if (tab === 'python') {
+        btnPy.className = 'px-pad-md py-pad-2xs bg-primary text-on-primary font-semibold shadow-sm transition-all';
+        btnJson.className = 'px-pad-md py-pad-2xs text-on-surface-variant hover:text-primary transition-all';
+        contentPy.classList.remove('hidden');
+        contentJson.classList.add('hidden');
+      } else {
+        btnJson.className = 'px-pad-md py-pad-2xs bg-primary text-on-primary font-semibold shadow-sm transition-all';
+        btnPy.className = 'px-pad-md py-pad-2xs text-on-surface-variant hover:text-primary transition-all';
+        contentJson.classList.remove('hidden');
+        contentPy.classList.add('hidden');
+      }
+    }
+  </script>
+</div></main><footer class="w-full bg-primary-container text-on-primary border-t border-inverse-surface"><div class="max-w-col-max-width mx-auto px-pad-lg py-pad-3xl"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-pad-xl pb-pad-2xl border-b border-inverse-surface/40"><div class="lg:col-span-2 flex flex-col gap-pad-sm"><div class="flex items-center gap-pad-xs"><span class="font-headline-sm text-headline-sm tracking-tight text-on-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-surface-container-highest text-on-surface">PROT_CORE</span></div><p class="font-headline-sm text-headline-sm text-secondary-container tracking-tight mt-pad-2xs">The next agent still gets paid.</p><p class="font-body-sm text-body-sm text-on-primary-container max-w-sm mt-pad-xs">Cryptographic orchestration, surety vaults, and deterministic state resolution for autonomous multi-agent pipelines on GenLayer.</p></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Product</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Execution Ledger</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Pipeline Canvas</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Protocol</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Registry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Fault Recovery</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Vault</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Pools</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Collateral Staking</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Bonding Curve</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Yield Telemetry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Liquidity Gates</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Skill</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Modules</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">LLM Orchestrators</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Zero-Knowledge Verifiers</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Tool Interfaces</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Consensus Rules</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Resources</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Developer Docs</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Smart Contracts</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">SDK &amp; CLI</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Network Explorer</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Security Audits</a></div></div><div class="pt-pad-lg flex flex-col sm:flex-row items-center justify-between gap-pad-md font-label-code text-label-code text-on-primary-container"><div class="flex items-center gap-pad-md"><span class="flex items-center gap-pad-2xs text-secondary-fixed-dim"><span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary-fixed-dim animate-pulse"></span><span>SYSTEM_CORE_LIVE</span></span><span>BUILD 2.4.0-REV-61997</span></div><div><span>GenLayer · Studio-dev 61997 · Test GEN</span></div></div></div></footer></body></html>

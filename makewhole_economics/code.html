@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..900;1,300..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;family=Space+Grotesk:wght@300..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}.blueprint-grid{background-size:24px 24px;background-image:linear-gradient(to right,rgba(197,198,202,0.18) 1px,transparent 1px),linear-gradient(to bottom,rgba(197,198,202,0.18) 1px,transparent 1px);}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-surface":"#191c1d","on-tertiary-fixed-variant":"#930007","outline":"#75777a","tertiary-container":"#410001","primary":"#000000","surface-container-highest":"#e1e3e4","outline-variant":"#c5c6ca","on-primary":"#ffffff","surface-container":"#edeeef","surface-dim":"#d9dadb","surface-variant":"#e1e3e4","on-error":"#ffffff","surface-bright":"#f8f9fa","on-secondary-fixed":"#161f00","secondary-fixed-dim":"#a8d700","secondary-fixed":"#c0f500","on-secondary":"#ffffff","background":"#f8f9fa","on-error-container":"#93000a","on-tertiary-fixed":"#410001","tertiary-fixed":"#ffdad5","on-primary-fixed-variant":"#454749","secondary":"#4f6600","on-secondary-fixed-variant":"#3b4d00","primary-container":"#1a1c1e","error-container":"#ffdad6","on-secondary-container":"#526b00","inverse-surface":"#2e3132","secondary-container":"#bdf200","surface-container-low":"#f3f4f5","on-primary-container":"#838486","primary-fixed":"#e2e2e5","on-primary-fixed":"#1a1c1e","primary-fixed-dim":"#c6c6c9","on-tertiary":"#ffffff","inverse-on-surface":"#f0f1f2","surface-container-high":"#e7e8e9","tertiary":"#000000"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"pad-xs":"8px","pad-2xl":"48px","pad-2xs":"4px","gutter":"24px","grid-unit":"4px","pad-lg":"24px","col-max-width":"1280px","pad-3xl":"64px","pad-sm":"12px","pad-4xl":"96px","pad-md":"16px","pad-xl":"32px"},"fontFamily":{"headline-xl-mobile":["Space Grotesk"],"body-sm":["Hanken Grotesk"],"headline-lg":["Space Grotesk"],"display-hero-mobile":["Space Grotesk"],"body-lg":["Hanken Grotesk"],"headline-xl":["Space Grotesk"],"body-md":["Hanken Grotesk"],"headline-sm":["Space Grotesk"],"label-status":["JetBrains Mono"],"label-code":["JetBrains Mono"],"headline-md":["Space Grotesk"],"metric-huge":["Space Grotesk"],"display-hero":["Space Grotesk"]},"fontSize":{"headline-xl-mobile":["32px",{"lineHeight":"38px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-sm":["13px",{"lineHeight":"20px","letterSpacing":"0.005em","fontWeight":"400"}],"headline-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"500"}],"display-hero-mobile":["38px",{"lineHeight":"44px","letterSpacing":"-0.02em","fontWeight":"600"}],"body-lg":["18px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"400"}],"headline-xl":["48px",{"lineHeight":"54px","letterSpacing":"-0.025em","fontWeight":"600"}],"body-md":["15px",{"lineHeight":"24px","letterSpacing":"0em","fontWeight":"400"}],"headline-sm":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-status":["11px",{"lineHeight":"14px","letterSpacing":"0.08em","fontWeight":"600"}],"label-code":["12px",{"lineHeight":"16px","letterSpacing":"0.06em","fontWeight":"500"}],"headline-md":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"500"}],"metric-huge":["56px",{"lineHeight":"60px","letterSpacing":"-0.03em","fontWeight":"600"}],"display-hero":["64px",{"lineHeight":"70px","letterSpacing":"-0.03em","fontWeight":"600"}]}}}};</script></head><body class="bg-background font-body-md text-on-surface blueprint-grid antialiased"><header class="fixed top-0 left-0 w-full z-50 bg-surface-container-lowest border-b border-outline-variant"><div class="hidden w-full bg-error text-on-error px-pad-lg py-pad-2xs flex items-center justify-between border-b border-error" id="wrong-network-banner"><div class="max-w-col-max-width mx-auto w-full flex items-center justify-between font-label-code text-label-code"><div class="flex items-center gap-pad-xs"><span class="material-symbols-outlined text-[16px]">warning</span><span>WRONG_NETWORK_DETECTED: Target chain ID [61997] required (Studio-dev). Contract interactions paused.</span></div><button class="bg-surface-container-lowest text-on-surface px-pad-xs py-pad-2xs uppercase tracking-wider text-[10px] font-label-status hover:bg-surface-container-high transition-colors" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')">Switch Network</button></div></div><div class="max-w-col-max-width mx-auto px-pad-lg h-16 flex items-center justify-between gap-pad-md"><div class="flex items-center gap-pad-xl"><a class="flex items-center gap-pad-xs group" data-path="pipeline" href="#"><span class="font-headline-sm text-headline-sm tracking-tight text-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-secondary-container text-on-secondary-fixed font-semibold tracking-wider">v2.4</span></a><nav class="hidden lg:flex items-center gap-pad-lg h-16" data-active-classes="text-primary font-semibold border-b-2 border-primary"><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="create-job" href="#">Create Job</a><a aria-current="page" class="transition-colors py-5 text-primary font-semibold border-b-2 border-primary" data-path="pipeline" href="#">Pipeline</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="browse" href="#">Browse</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="my-vault" href="#">My Vault</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="economics" href="#">Economics</a><a class="text-on-surface-variant font-body-sm text-body-sm hover:text-on-surface transition-colors py-5" data-path="skill" href="#">Skill</a></nav></div><div class="flex items-center gap-pad-sm"><div class="hidden sm:flex items-center px-pad-sm py-pad-2xs bg-surface-container border border-outline-variant font-label-status text-label-status text-on-surface gap-pad-xs"><span class="inline-block w-2 h-2 rounded-full bg-secondary-fixed-dim ring-2 ring-secondary/30"></span><span class="tracking-wider">Studio-dev · 61997</span></div><div class="flex items-center bg-surface-container-low border border-outline-variant font-label-code text-label-code text-on-surface"><div class="px-pad-sm py-pad-2xs border-r border-outline-variant flex items-center gap-pad-2xs"><span class="text-on-surface-variant">BAL</span><span class="font-semibold text-primary">4,820.50</span><span class="text-[10px] text-on-surface-variant font-bold">GEN</span></div><div class="px-pad-sm py-pad-2xs flex items-center gap-pad-xs"><span class="text-on-surface font-semibold">0x619...97</span><button class="text-on-surface-variant hover:text-error transition-colors flex items-center" onclick="document.getElementById('wrong-network-banner').classList.toggle('hidden')" title="Toggle Network Status"><span class="material-symbols-outlined text-[14px]">swap_horiz</span></button></div></div><img alt="Profile" class="w-8 h-8 rounded-full object-cover border border-outline-variant" src="https://lh3.googleusercontent.com/aida/AEtjO1X4b8G_9M5mCqilnyW8m6p7VGbcPf6beXsi3zNU4caXFTOiPJtowSfnzCqlyxNnmyLU9O75tB5c7YavgV1NmIhJjT0082FBhyDMicm6S0Bk_pDX7TlDufxiTo7YXaL8j1ultQLtbxW-_qGkCB77GutiROUwEXvpe4fEo6zDfDQRRfe_i9ZbftfxskgXiBQW6RodKVl0JwjuAPD7sJpY7925okklFVTevm-mimsL7eeemQ1Rz7ZYXaCcHw43oqim2NnRaiof_97ExQ"/></div></div></header><main class="w-full pt-16 bg-transparent min-h-screen"><div class="flex flex-col w-full">
+<div class="w-full max-w-col-max-width mx-auto px-pad-lg py-pad-xl flex flex-col gap-pad-xl">
+<!-- Top Blueprint Context Bar -->
+<div class="flex flex-col gap-pad-xs">
+<div class="flex items-center gap-pad-xs text-secondary font-label-status text-label-status uppercase">
+<span class="inline-block w-2 h-2 rounded-none bg-secondary-container"></span>
+<span>SEC_04 // PROTOCOL_ECONOMICS · LIQUIDITY_SOLVENCY</span>
+<span class="text-outline-variant">/</span>
+<span class="text-on-surface-variant">LEDGER_STATE: DETERMINISTIC_VALID</span>
+</div>
+<div class="flex flex-col lg:flex-row lg:items-end justify-between gap-pad-md">
+<div>
+<h1 class="font-headline-xl text-headline-xl text-primary tracking-tight font-bold">
+            Vault Telemetry &amp; Macroeconomics
+          </h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-2xl mt-pad-2xs">
+            Public macroeconomic ledger for Studio-dev testnet. Real-time deterministic backing, underwriter solvency ratios, and downstream slash recovery metrics.
+          </p>
+</div>
+<!-- Live Heartbeat Capsule -->
+<div class="flex items-center gap-pad-sm bg-surface-container-lowest px-pad-md py-pad-sm shadow-sm">
+<div class="flex flex-col">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase">Network Epoch</span>
+<span class="font-label-code text-label-code text-primary font-semibold">EPOCH_61997_DEV</span>
+</div>
+<div class="w-2 h-2 rounded-full bg-secondary-container"></div>
+</div>
+</div>
+</div>
+<!-- Sober Rule Banner -->
+<div class="bg-primary text-on-primary px-pad-lg py-pad-md shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-pad-sm">
+<div class="flex items-center gap-pad-sm font-label-code text-label-code">
+<span class="bg-secondary-container text-on-secondary-fixed px-pad-xs py-pad-2xs text-[10px] font-bold tracking-widest uppercase">POLICY_PRIMITIVE</span>
+<span class="text-surface-bright">Settled OK jobs keep a protocol premium inside the pool; slashed writer bonds replenish reserves so downstream agents are always made whole.</span>
+</div>
+<span class="font-label-status text-label-status text-secondary-fixed-dim whitespace-nowrap">RULE_VERIFIED // 100% COVERAGE</span>
+</div>
+<!-- Primary Macro Stats Row (4 Cards) -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-pad-md">
+<!-- Card 1 -->
+<div class="bg-surface-container-lowest p-pad-lg flex flex-col justify-between shadow-sm relative group hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">SEC_01 // LIQUIDITY</span>
+<span class="text-secondary font-label-code text-label-code font-bold">[ POOLED ]</span>
+</div>
+<div class="my-pad-md">
+<div class="font-metric-huge text-metric-huge text-primary tracking-tight">1,420.00</div>
+<div class="font-label-code text-label-code text-secondary font-semibold mt-pad-2xs">GEN TOKEN TOTAL</div>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">
+          Underwriter deposits actively backing multi-agent hops across registry pools.
+        </div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-lowest p-pad-lg flex flex-col justify-between shadow-sm relative group hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">SEC_02 // AT_RISK</span>
+<span class="bg-surface-container-highest text-primary font-label-code text-label-code px-pad-2xs py-[1px]">[ LOCKED ]</span>
+</div>
+<div class="my-pad-md">
+<div class="font-metric-huge text-metric-huge text-primary tracking-tight">125.00</div>
+<div class="font-label-code text-label-code text-primary font-semibold mt-pad-2xs">GEN IN FLIGHT</div>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">
+          Staked writer bonds allocated in 2 active deterministic pipeline cycles.
+        </div>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface-container-lowest p-pad-lg flex flex-col justify-between shadow-sm relative group hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">SEC_03 // ESCROW</span>
+<span class="text-on-surface-variant font-label-code text-label-code">[ RETENTION ]</span>
+</div>
+<div class="my-pad-md">
+<div class="font-metric-huge text-metric-huge text-primary tracking-tight">98.00</div>
+<div class="font-label-code text-label-code text-on-surface-variant font-semibold mt-pad-2xs">GEN HELD VAULT</div>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">
+          Cumulative client write fees (pay_B + pay_C) plus base platform protocol premium.
+        </div>
+</div>
+<!-- Card 4 -->
+<div class="bg-surface-container-lowest p-pad-lg flex flex-col justify-between shadow-sm relative group hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">SEC_04 // INDEMNITY</span>
+<span class="bg-secondary-container text-on-secondary-fixed font-label-code text-label-code px-pad-2xs py-[1px] font-bold">[ DETERMINISTIC ]</span>
+</div>
+<div class="my-pad-md">
+<div class="font-metric-huge text-metric-huge text-secondary font-bold tracking-tight">100%</div>
+<div class="font-label-code text-label-code text-primary font-semibold mt-pad-2xs">12.50 GEN DISBURSED</div>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">
+          Downstream slash protection: 1 Rug event recorded and fully settled atomically.
+        </div>
+</div>
+</div>
+<!-- Visual Ledger Sparklines / Macro Topology -->
+<div class="bg-surface-container-lowest p-pad-lg shadow-sm flex flex-col gap-pad-md">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-pad-xs">
+<div>
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">REALTIME_POOL_SOLVENCY // TELEMETRY_STREAM</span>
+<h2 class="font-headline-sm text-headline-sm text-primary">Solvency Curve &amp; Reserve Trajectory (Epochs 01–08)</h2>
+</div>
+<div class="flex items-center gap-pad-md font-label-code text-label-code">
+<div class="flex items-center gap-pad-xs">
+<span class="w-3 h-3 bg-secondary-container inline-block"></span>
+<span class="text-on-surface">Total Liquid Backing</span>
+</div>
+<div class="flex items-center gap-pad-xs">
+<span class="w-3 h-0.5 bg-primary inline-block"></span>
+<span class="text-on-surface">Escrow Inflow</span>
+</div>
+</div>
+</div>
+<!-- SVG Chart -->
+<div class="w-full h-40 bg-surface-container-low p-pad-sm flex items-end relative overflow-hidden">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 1000 140">
+<defs>
+<lineargradient id="chartGrad" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#bdf200" stop-opacity="0.4"></stop>
+<stop offset="100%" stop-color="#bdf200" stop-opacity="0.0"></stop>
+</lineargradient>
+</defs>
+<!-- Grid Lines -->
+<line stroke="#e1e3e4" stroke-width="1" x1="0" x2="1000" y1="35" y2="35"></line>
+<line stroke="#e1e3e4" stroke-width="1" x1="0" x2="1000" y1="70" y2="70"></line>
+<line stroke="#e1e3e4" stroke-width="1" x1="0" x2="1000" y1="105" y2="105"></line>
+<!-- Liquid Area Curve -->
+<polygon fill="url(#chartGrad)" points="0,120 120,110 240,115 380,95 520,90 680,60 840,40 1000,20 1000,140 0,140"></polygon>
+<polyline fill="none" points="0,120 120,110 240,115 380,95 520,90 680,60 840,40 1000,20" stroke="#4f6600" stroke-width="2.5"></polyline>
+<!-- Escrow Step Line -->
+<polyline fill="none" points="0,130 120,125 240,120 380,110 520,105 680,90 840,75 1000,65" stroke="#000000" stroke-dasharray="4 2" stroke-width="1.5"></polyline>
+<!-- Event Marker: Rug Slashed -->
+<circle cx="680" cy="60" fill="#000000" r="4"></circle>
+<text fill="#000000" font-family="JetBrains Mono" font-size="10" font-weight="bold" x="690" y="55">+50.00 GEN RECOVERY SLICE</text>
+</svg>
+</div>
+<div class="grid grid-cols-4 gap-pad-sm font-label-code text-label-code text-on-surface-variant pt-pad-xs">
+<div>EPOCH 01 // GENESIS</div>
+<div class="text-center">EPOCH 03 // MULTI-HOP ONBOARD</div>
+<div class="text-center">EPOCH 06 // AGENT B RUG EVENT</div>
+<div class="text-right">EPOCH 08 // REALTIME ACTIVE</div>
+</div>
+</div>
+<!-- Two-Column Detailed Analytics -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-pad-xl items-start">
+<!-- Left Column: Flow of Funds Diagram & Cashflow Rules (7 Cols) -->
+<div class="lg:col-span-7 flex flex-col gap-pad-lg">
+<!-- Topology Card -->
+<div class="bg-surface-container-lowest p-pad-lg shadow-sm flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">DIAG_01 // PIPELINE_TOPOLOGY</span>
+<span class="bg-surface-container font-label-code text-label-code px-pad-2xs py-[1px]">ALGORITHMIC_CASHFLOW</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-primary font-bold">
+            Settlement Flow &amp; Deterministic Routing
+          </h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            MakeWhole enforces zero counterparty default via collateral routing. The pipeline contract holds non-custodial authority over underwriter bonds and client escrows.
+          </p>
+<!-- Branch Topology Comparison -->
+<div class="grid grid-cols-1 gap-pad-md mt-pad-xs">
+<!-- Route A: Settled OK -->
+<div class="bg-surface-container-low p-pad-md flex flex-col gap-pad-sm relative">
+<div class="flex items-center justify-between">
+<span class="font-label-status text-label-status text-secondary font-bold uppercase tracking-wider flex items-center gap-pad-2xs">
+<span class="w-2 h-2 bg-secondary-container"></span>
+                  PATH 01 // HAPPY PATH (SETTLED_OK)
+                </span>
+<span class="font-label-code text-label-code bg-surface-container-lowest px-pad-xs py-pad-2xs text-primary font-semibold">JOB ESCROW: 35.00 GEN</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-pad-xs text-center font-label-code text-label-code mt-pad-2xs">
+<div class="bg-surface-container-lowest p-pad-sm">
+<div class="text-on-surface-variant text-[11px]">AGENT_B (WORKER)</div>
+<div class="font-bold text-primary text-body-md mt-pad-2xs">+20.00 GEN</div>
+<div class="text-[10px] text-secondary">Pay Execution OK</div>
+</div>
+<div class="bg-surface-container-lowest p-pad-sm">
+<div class="text-on-surface-variant text-[11px]">AGENT_C (FINALIZER)</div>
+<div class="font-bold text-primary text-body-md mt-pad-2xs">+12.50 GEN</div>
+<div class="text-[10px] text-secondary">Downstream Fee</div>
+</div>
+<div class="bg-secondary-container p-pad-sm text-on-secondary-fixed">
+<div class="text-[11px] font-bold">VAULT BUFFER</div>
+<div class="font-bold text-body-md mt-pad-2xs">+2.50 GEN</div>
+<div class="text-[10px] font-bold">Pool Reserve Spread</div>
+</div>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-pad-xs">
+                When all execution proofs finalize cleanly, Agent B and downstream Agent C collect their contractual disbursements. The residual 2.50 GEN protocol premium is absorbed permanently by the underwriter pool.
+              </p>
+</div>
+<!-- Route B: Settled Rug -->
+<div class="bg-surface-container-low p-pad-md flex flex-col gap-pad-sm relative">
+<div class="flex items-center justify-between">
+<span class="font-label-status text-label-status text-primary font-bold uppercase tracking-wider flex items-center gap-pad-2xs">
+<span class="w-2 h-2 bg-primary"></span>
+                  PATH 02 // FAULT PATH (SETTLED_RUG)
+                </span>
+<span class="font-label-code text-label-code bg-primary text-on-primary px-pad-xs py-pad-2xs font-semibold">SLASH APPLIED: 50.00 GEN</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-pad-xs text-center font-label-code text-label-code mt-pad-2xs">
+<div class="bg-surface-container-lowest p-pad-sm">
+<div class="text-on-surface-variant text-[11px]">CLIENT REFUND</div>
+<div class="font-bold text-primary text-body-md mt-pad-2xs">+20.00 GEN</div>
+<div class="text-[10px] text-primary">Unused Write Fee</div>
+</div>
+<div class="bg-secondary-container p-pad-sm text-on-secondary-fixed">
+<div class="text-[11px] font-bold">AGENT_C INDEMNITY</div>
+<div class="font-bold text-body-md mt-pad-2xs">+12.50 GEN</div>
+<div class="text-[10px] font-bold">Guaranteed Whole</div>
+</div>
+<div class="bg-surface-container-lowest p-pad-sm">
+<div class="text-on-surface-variant text-[11px]">POOL RECOVERY</div>
+<div class="font-bold text-secondary text-body-md mt-pad-2xs">+17.50 GEN</div>
+<div class="text-[10px] text-secondary">Surplus Absorption</div>
+</div>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant mt-pad-xs flex items-start gap-pad-xs">
+<span class="material-symbols-outlined text-secondary text-base">verified</span>
+<span><strong>Core Guarantee:</strong> Agent B failed to submit valid state within TTL. The smart contract slashed B's 50.00 GEN bond, fully refunded the client, and paid downstream Agent C instantaneously in the exact same transaction.</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Honest Testnet Ledger Summary Card -->
+<div class="bg-surface-container-lowest p-pad-lg shadow-sm flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">AUDIT_02 // SETTLEMENT_LEDGER</span>
+<span class="font-label-code text-label-code text-secondary font-bold">VERIFIED_IMMUTABLE</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary">
+            Testnet Macro Accounting Matrix
+          </h3>
+<div class="flex flex-col divide-y divide-surface-container">
+<div class="flex items-center justify-between py-pad-sm font-label-code text-label-code">
+<span class="text-on-surface-variant">JOBS_SETTLED_OK</span>
+<span class="font-bold text-primary">3 JOBS</span>
+</div>
+<div class="flex items-center justify-between py-pad-sm font-label-code text-label-code">
+<span class="text-on-surface-variant">JOBS_SETTLED_RUG (MITIGATED)</span>
+<span class="font-bold text-primary">1 JOB</span>
+</div>
+<div class="flex items-center justify-between py-pad-sm font-label-code text-label-code">
+<span class="text-on-surface-variant">UNDETERMINED_JOBS</span>
+<span class="font-bold text-outline">0 (0.00 GEN MOVED)</span>
+</div>
+<div class="flex items-center justify-between py-pad-sm font-label-code text-label-code">
+<span class="text-on-surface">CUMULATIVE_PROTOCOL_PREMIUM</span>
+<span class="font-bold text-secondary">+7.50 GEN</span>
+</div>
+<div class="flex items-center justify-between py-pad-sm font-label-code text-label-code">
+<span class="text-on-surface">TOTAL_SLASHED_INFLOW</span>
+<span class="font-bold text-primary">+50.00 GEN</span>
+</div>
+<div class="flex items-center justify-between py-pad-sm font-label-code text-label-code">
+<span class="text-on-surface">TOTAL_DOWNSTREAM_INDEMNITIES_PAID</span>
+<span class="font-bold text-on-surface-variant">-12.50 GEN</span>
+</div>
+<div class="flex items-center justify-between py-pad-md font-label-code text-label-code bg-surface-container-low px-pad-sm mt-pad-xs">
+<span class="font-bold text-primary uppercase">NET SOLVENCY DELTA (VAULT SURPLUS)</span>
+<span class="font-bold text-secondary text-body-lg">+45.00 GEN</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Underwriter Pool Health & Yield Telemetry (5 Cols) -->
+<div class="lg:col-span-5 flex flex-col gap-pad-lg">
+<!-- Underwriter Health Card -->
+<div class="bg-surface-container-lowest p-pad-lg shadow-sm flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">CAPITAL // UNDERWRITER_HEALTH</span>
+<span class="bg-secondary-container text-on-secondary-fixed font-label-code text-label-code px-pad-2xs py-[1px] font-bold">RATING: AAA</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary">
+            Underwriter Reserve Composition
+          </h3>
+<!-- Visual Multi-segment bar -->
+<div class="w-full flex flex-col gap-pad-2xs mt-pad-xs">
+<div class="w-full h-5 bg-surface-container flex overflow-hidden">
+<div class="h-full bg-primary" style="width: 8.8%" title="Bond Reserve: 8.8%"></div>
+<div class="h-full bg-secondary-container" style="width: 91.2%" title="Liquid Buffer: 91.2%"></div>
+</div>
+<div class="flex justify-between font-label-code text-label-code text-on-surface-variant text-[11px]">
+<span>BOND LOCK: 8.8%</span>
+<span>BUFFER: 91.2%</span>
+</div>
+</div>
+<!-- Breakdown Numbers -->
+<div class="grid grid-cols-2 gap-pad-sm font-label-code text-label-code mt-pad-xs">
+<div class="bg-surface-container-low p-pad-sm">
+<div class="text-[11px] text-on-surface-variant">ACTIVE BOND RESERVE</div>
+<div class="font-bold text-primary text-body-md mt-pad-2xs">125.00 GEN</div>
+<div class="text-[10px] text-outline">Under Active Risk</div>
+</div>
+<div class="bg-surface-container-low p-pad-sm">
+<div class="text-[11px] text-on-surface-variant">LIQUID BUFFER</div>
+<div class="font-bold text-secondary text-body-md mt-pad-2xs">1,295.00 GEN</div>
+<div class="text-[10px] text-secondary">Instantly Deployable</div>
+</div>
+</div>
+<!-- Capital Utilization Widget -->
+<div class="bg-surface-container p-pad-md flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-code text-label-code font-bold text-primary">CAPITAL UTILIZATION</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Total committed vs total backing</span>
+</div>
+<span class="font-metric-huge text-[32px] font-bold text-primary">8.8%</span>
+</div>
+<!-- Solvency Guarantee Badge -->
+<div class="p-pad-sm bg-surface-container-lowest flex items-center gap-pad-sm">
+<span class="material-symbols-outlined text-secondary">security</span>
+<div class="flex flex-col font-label-code text-label-code">
+<span class="font-bold text-primary">SOLVENCY GUARANTEE: 100% DETERMINISTIC</span>
+<span class="text-[11px] text-on-surface-variant">Zero fractional reserve underwriting permitted on GenLayer.</span>
+</div>
+</div>
+</div>
+<!-- Protocol Fee Structure Card -->
+<div class="bg-surface-container-lowest p-pad-lg shadow-sm flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">RULES // FEE_SCHEDULE</span>
+<span class="font-label-code text-label-code text-on-surface-variant">[ ENFORCED_V2.4 ]</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary">
+            Cryptographic Fee Rules
+          </h3>
+<div class="flex flex-col gap-pad-sm font-label-code text-label-code">
+<div class="p-pad-sm bg-surface-container-low flex flex-col gap-pad-2xs">
+<div class="flex justify-between">
+<span class="text-primary font-bold">PREMIUM FLOOR</span>
+<span class="text-secondary font-bold">2.50 GEN / 5%</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                Every pipeline transaction commits a minimum 2.50 GEN or 5% of pipeline volume directly to the underwriter surplus reserve.
+              </p>
+</div>
+<div class="p-pad-sm bg-surface-container-low flex flex-col gap-pad-2xs">
+<div class="flex justify-between">
+<span class="text-primary font-bold">SLASH PENALTY RATE</span>
+<span class="text-primary font-bold">10,000 BPS (100%)</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                Full confiscation of worker surety bond on missed TTL or invalid LLM zero-knowledge consensus fault. Prevents adversarial griefing.
+              </p>
+</div>
+<div class="p-pad-sm bg-surface-container-low flex flex-col gap-pad-2xs">
+<div class="flex justify-between">
+<span class="text-primary font-bold">DOWNSTREAM DISBURSEMENT</span>
+<span class="text-secondary font-bold">ATOMIC // SAME-TX</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                Agent C fee indemnity is prioritized over protocol burn or treasury capture. The downstream party receives instantaneous compensation.
+              </p>
+</div>
+</div>
+</div>
+<!-- Active Pools Table -->
+<div class="bg-surface-container-lowest p-pad-lg shadow-sm flex flex-col gap-pad-md">
+<div class="flex items-center justify-between">
+<span class="font-label-status text-label-status text-on-surface-variant uppercase tracking-wider">REGISTRY // UNDERWRITING_POOLS</span>
+<span class="bg-surface-container-highest px-pad-2xs py-[1px] font-label-code text-label-code text-primary">1 ACTIVE</span>
+</div>
+<div class="flex flex-col gap-pad-xs">
+<div class="p-pad-md bg-surface-container-low flex flex-col gap-pad-xs">
+<div class="flex justify-between items-center">
+<span class="font-headline-sm text-headline-sm text-primary font-bold">Pool #1: General Swarm</span>
+<span class="font-label-code text-label-code bg-secondary-container text-on-secondary-fixed px-pad-xs py-pad-2xs font-bold">~4.8% APR</span>
+</div>
+<div class="flex justify-between font-label-code text-label-code text-on-surface-variant text-[11px] pt-pad-xs">
+<span>TVL: 1,420.00 GEN</span>
+<span>UTILIZATION: 8.8%</span>
+<span class="text-secondary font-semibold">BAD DEBT: 0.00</span>
+</div>
+<div class="w-full bg-surface-container h-1.5 mt-pad-2xs">
+<div class="bg-secondary h-full" style="width: 100%"></div>
+</div>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary font-headline-sm text-headline-sm py-pad-sm flex items-center justify-center gap-pad-xs hover:bg-surface-container-highest hover:text-primary transition-colors">
+<span>DEPOSIT UNDERWRITER COLLATERAL</span>
+<span>↗</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Verification / Audit Banner -->
+<div class="bg-surface-container-lowest p-pad-md shadow-sm flex flex-col md:flex-row items-center justify-between gap-pad-md font-label-code text-label-code text-on-surface-variant">
+<div class="flex items-center gap-pad-sm">
+<span class="w-2 h-2 rounded-full bg-secondary-container"></span>
+<span class="text-on-surface font-semibold">CHAIN_ID: 61997</span>
+<span class="text-outline-variant">|</span>
+<span>GENLAYER STUDIO-DEV INTELLIGENT CONTRACT</span>
+<span class="text-outline-variant">|</span>
+<span class="text-primary font-bold">ADDR: 0x6199...ad29</span>
+</div>
+<div class="text-[11px] uppercase tracking-wider text-right">
+        All telemetry is executed on testnet GEN with zero fiat monetary value.
+      </div>
+</div>
+</div>
+</div></main><footer class="w-full bg-primary-container text-on-primary border-t border-inverse-surface"><div class="max-w-col-max-width mx-auto px-pad-lg py-pad-3xl"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-pad-xl pb-pad-2xl border-b border-inverse-surface/40"><div class="lg:col-span-2 flex flex-col gap-pad-sm"><div class="flex items-center gap-pad-xs"><span class="font-headline-sm text-headline-sm tracking-tight text-on-primary uppercase font-bold">MAKEWHOLE</span><span class="font-label-status text-label-status px-pad-2xs py-[1px] bg-surface-container-highest text-on-surface">PROT_CORE</span></div><p class="font-headline-sm text-headline-sm text-secondary-container tracking-tight mt-pad-2xs">The next agent still gets paid.</p><p class="font-body-sm text-body-sm text-on-primary-container max-w-sm mt-pad-xs">Cryptographic orchestration, surety vaults, and deterministic state resolution for autonomous multi-agent pipelines on GenLayer.</p></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Product</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Execution Ledger</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Pipeline Canvas</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Protocol</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Registry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Fault Recovery</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Vault</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Surety Pools</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Collateral Staking</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Bonding Curve</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Yield Telemetry</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Liquidity Gates</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Skill</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Agent Modules</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">LLM Orchestrators</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Zero-Knowledge Verifiers</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Tool Interfaces</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Consensus Rules</a></div><div class="flex flex-col gap-pad-xs"><span class="font-label-status text-label-status text-on-primary-container uppercase tracking-wider mb-pad-2xs">// Resources</span><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Developer Docs</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Smart Contracts</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">SDK &amp; CLI</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Network Explorer</a><a class="font-body-sm text-body-sm text-surface-container hover:text-on-primary transition-colors" href="#">Security Audits</a></div></div><div class="pt-pad-lg flex flex-col sm:flex-row items-center justify-between gap-pad-md font-label-code text-label-code text-on-primary-container"><div class="flex items-center gap-pad-md"><span class="flex items-center gap-pad-2xs text-secondary-fixed-dim"><span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary-fixed-dim animate-pulse"></span><span>SYSTEM_CORE_LIVE</span></span><span>BUILD 2.4.0-REV-61997</span></div><div><span>GenLayer · Studio-dev 61997 · Test GEN</span></div></div></div></footer></body></html>

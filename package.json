@@ -1,0 +1,15 @@
+{
+  "name": "makewhole",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "pytest tests/direct -v",
+    "lint:contract": "genvm-lint check contracts/makewhole.py",
+    "deploy": "node scripts/deploy.mjs",
+    "verify": "node scripts/verify_payout.mjs",
+    "web": "npm --prefix web run dev"
+  },
+  "dependencies": {
+    "genlayer-js": "2.0.0-rc.1"
+  }
+}
