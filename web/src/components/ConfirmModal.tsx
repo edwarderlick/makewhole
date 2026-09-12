@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 
 export const NO_CONTRACT_COPY =
-  "No Intelligent Contract on this network yet. Studio-dev 61997 rejected the GenVM runner. Connect a wallet to see the network chip. Replay the public-gist rug below — that path is local + fixtures until an address is set.";
+  "No Intelligent Contract on this network yet. Connect a wallet to see the network chip. Replay the public-gist rug below — that path is local + fixtures until an address is set.";
 
 export function ConfirmModal({
   open,

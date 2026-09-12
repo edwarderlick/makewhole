@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 import re
 from dataclasses import dataclass
 
-from genlayer import *
+import genlayer as gl
+from genlayer.storage import TreeMap, DynArray
+from genlayer.types import *
 
 ERROR_EXPECTED = "[EXPECTED]"
 ERROR_EXTERNAL = "[EXTERNAL]"
@@ -246,7 +248,7 @@ Rules:
     return _triad(fault, pay_downstream, slash_bps, reason, False)
 
 
-@allow_storage
+@gl.storage.allow
 @dataclass
 class Job:
     id: str
@@ -272,7 +274,7 @@ class Job:
     hop_kind: str
 
 
-class Makewhole(gl.Contract):
+class Makewhole(gl.contract.Contract):
     jobs: TreeMap[str, Job]
     job_ids: DynArray[str]
     bonds: TreeMap[str, u256]

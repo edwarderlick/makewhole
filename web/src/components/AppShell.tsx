@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWallet } from "@/lib/wallet";
-import { shortAddr } from "@/lib/format";
+import { shortAddr, formatGen } from "@/lib/format";
 import { CONTRACT_ADDRESS, hasLiveContract } from "@/lib/contract";
 import { TARGET_CHAIN_ID, TARGET_RPC, chainLabel } from "@/lib/network";
 
@@ -96,22 +96,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             {w.account ? (
               <button
+                suppressHydrationWarning
                 onClick={w.disconnect}
-                className="flex items-center bg-surface-container-low border border-outline-variant font-label-code text-label-code text-on-surface"
+                className="flex flex-col sm:flex-row items-center bg-surface-container-low border border-outline-variant font-label-code text-[10px] sm:text-[12px] text-on-surface hover:bg-neutral-100 transition-colors"
                 title="Disconnect"
               >
-                <span className="px-3 py-1.5 border-r border-outline-variant text-on-surface-variant">WALLET</span>
-                <span className="px-3 py-1.5 font-semibold">{shortAddr(w.account)}</span>
+                {w.balance !== null && (
+                  <span className="w-full sm:w-auto px-2 py-0.5 sm:py-1.5 border-b sm:border-b-0 sm:border-r border-outline-variant text-primary font-bold text-center">
+                    {formatGen(w.balance, 2)} GEN
+                  </span>
+                )}
+                <span className="w-full sm:w-auto px-2 py-0.5 sm:py-1.5 font-semibold text-center">{shortAddr(w.account)}</span>
               </button>
             ) : (
               <button
+                suppressHydrationWarning
                 type="button"
                 onClick={() => {
                   void w.connect();
                 }}
-                className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold tracking-wide uppercase bg-black hover:bg-neutral-800 text-white rounded-md transition-all shadow-sm"
+                className="inline-flex items-center justify-center px-4 py-2 text-[10px] sm:text-xs font-semibold tracking-wide uppercase bg-black hover:bg-neutral-800 text-white rounded-md transition-all shadow-sm whitespace-nowrap"
               >
-                {w.connecting ? "Connecting…" : "Connect wallet"}
+                {w.connecting ? "Connecting..." : "Connect wallet"}
               </button>
             )}
           </div>

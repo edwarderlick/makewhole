@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="bg-background font-body-md text-body-md text-on-surface antialiased selection:bg-[#84cc16] selection:text-black">
+      <body className="bg-background font-body-md text-body-md text-on-surface antialiased selection:bg-[#84cc16] selection:text-black" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

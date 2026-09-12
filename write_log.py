@@ -1,4 +1,4 @@
-# Agent Log
+content = """# Agent Log
 
 ## Deployment Details
 
@@ -31,3 +31,6 @@
 1. FeeValueMustBeNonZero(1): Initially deployed without providing explicit fees. genlayer deploy required valid fee setup on the new GenVM. Fixed by running genlayer estimate-fees standalone to build a transaction fee preset, and passing it unchanged into the deploy command via the --fees and --fee-value flags.
 2. TypeError: Makewhole.__init__() takes 1 positional argument but 3 were given: Passed --args ... during deploy because the initial local Makewhole code had a constructor that took owner and fee_percent. However, the current code has def __init__(self):. Fixed by removing --args from the deploy command.
 3. NameError: name 'DynArray' is not defined: Fixed the imports from 'from genlayer import *' to explicitly import what was needed: 'import genlayer as gl', 'from genlayer.storage import TreeMap, DynArray', and 'from genlayer.types import *'. Also changed 'class Makewhole(gl.Contract)' to 'class Makewhole(gl.contract.Contract)'.
+"""
+with open('AGENT_LOG.md', 'w', encoding='utf-8') as f:
+    f.write(content)

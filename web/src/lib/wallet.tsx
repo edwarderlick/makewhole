@@ -20,6 +20,7 @@ type WalletCtx = {
   client: any | null;
   account: string | null;
   chainId: number | null;
+  balance: string | null;
   wrongNetwork: boolean;
   connecting: boolean;
   error: string | null;
@@ -118,12 +119,25 @@ async function ensureChain(provider: any, target: TargetChain = targetFromEnv())
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccount] = useState<string | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
+  const [balance, setBalance] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<any | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [wallets, setWallets] = useState<Injected[]>([]);
   const providerRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (client && account && chainId === TARGET_CHAIN_ID) {
+      walletRequest(providerRef.current, "eth_getBalance", [account, "latest"])
+        .then((hex) => {
+          setBalance(BigInt(hex).toString());
+        })
+        .catch(() => setBalance(null));
+    } else {
+      setBalance(null);
+    }
+  }, [client, account, chainId]);
 
   const detach = useCallback((p: any, onAcc: any, onChain: any) => {
     p?.removeListener?.("accountsChanged", onAcc);
@@ -318,6 +332,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       client,
       account,
       chainId,
+      balance,
       wrongNetwork: chainId !== null && chainId !== TARGET_CHAIN_ID,
       connecting,
       error,
@@ -325,7 +340,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       disconnect,
       switchNetwork,
     }),
-    [client, account, chainId, connecting, error, connect, disconnect, switchNetwork]
+    [client, account, chainId, balance, connecting, error, connect, disconnect, switchNetwork]
   );
 
   return (
