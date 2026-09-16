@@ -13,6 +13,7 @@ export default function ProofsPage() {
   const [credit, setCredit] = useState<any>(0);
   const [rugs, setRugs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -46,7 +47,7 @@ export default function ProofsPage() {
   }
   load();
   return () => { live = false; };
-  }, [client, account]);
+  }, [client, account, refreshTick]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -63,7 +64,7 @@ export default function ProofsPage() {
           <p className="font-body-sm text-body-sm text-on-surface-variant">
             If a native EOA payout could not complete, GEN lands here.
           </p>
-          <TxButton label="withdraw" onClick={() => writes.withdraw(client).then((t) => { load(); return t; })} />
+          <TxButton label="withdraw" onClick={() => writes.withdraw(client).then((t) => { setRefreshTick(r => r + 1); return t; })} />
         </div>
       </div>
 
