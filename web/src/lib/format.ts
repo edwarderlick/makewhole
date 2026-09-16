@@ -33,11 +33,11 @@ export function parseGen(input: string): bigint {
 }
 
 export function explorerTx(hash: string) {
-  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-studio-dev.genlayer.com";
+  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-Studio Next.genlayer.com";
   return `${base}/tx/${hash}`;
 }
 
 export function explorerAddr(addr: string) {
-  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-studio-dev.genlayer.com";
-  return `${base}/contracts/${addr}`;
+  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-Studio Next.genlayer.com";
+  return `${base}/address/${addr}`;
 }
