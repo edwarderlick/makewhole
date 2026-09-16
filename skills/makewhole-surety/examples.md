@@ -4,7 +4,7 @@ Env:
 
 ```
 MAKEWHOLE_CONTRACT=          # empty → check_bond returns bonded=false, reason=NO_CONTRACT
-MAKEWHOLE_RPC=https://studio-dev.genlayer.com/api
+MAKEWHOLE_RPC=https://studio-next.genlayer.com/api
 ```
 
 ```python

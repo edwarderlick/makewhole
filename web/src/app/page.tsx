@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LandingLoop } from "@/components/LandingLoop";
 
 export default function LandingPage() {
   return (
@@ -44,85 +45,26 @@ export default function LandingPage() {
                 >
                   How it works
                 </Link>
+                <Link
+                  href="/proofs"
+                  className="inline-flex items-center px-6 py-3.5 bg-white hover:bg-gray-50 text-neutral-800 text-sm font-semibold rounded-md border border-neutral-300 transition-all"
+                >
+                  Proofs
+                </Link>
+                <Link
+                  href="/skill"
+                  className="inline-flex items-center px-6 py-3.5 bg-[#b6ff3b]/20 hover:bg-[#b6ff3b]/30 text-[#4d7c0f] border border-[#b6ff3b]/40 text-sm font-semibold rounded-md transition-all"
+                >
+                  Skill
+                </Link>
               </div>
               <div className="pt-4 flex items-center space-x-2 text-xs font-mono text-neutral-500">
                 <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
-                <span>Studio-dev · Chain 61997 · Test GEN · No real value</span>
+                <span>Studio Next · Chain 61997 · Test GEN · No real value</span>
               </div>
             </div>
             <div className="lg:col-span-6 relative">
-              <div className="relative bg-white border border-neutral-200 rounded-xl p-6 sm:p-8 iso-card bg-blueprint">
-                <div className="flex items-center justify-between pb-6 border-b border-dashed border-neutral-200">
-                  <div className="flex items-center space-x-2 font-mono text-xs text-neutral-500">
-                    <span className="h-2 w-2 rounded-full bg-lime-500" />
-                    <span>PIPELINE · 3 HOPS</span>
-                  </div>
-                  <div className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-lime-50 border border-lime-300 text-lime-800 bracket-chip">
-                    REROUTE_ACTIVE
-                  </div>
-                </div>
-                <div className="my-8 relative py-6">
-                  <div className="grid grid-cols-3 gap-3 sm:gap-4 relative z-10">
-                    <div className="bg-white border border-neutral-300 rounded-lg p-3 sm:p-4 text-center shadow-sm">
-                      <span className="text-[10px] font-mono text-neutral-600 block uppercase">Hop 1</span>
-                      <div className="mt-1 font-bold text-sm sm:text-base text-neutral-900">RESEARCH</div>
-                      <div className="mt-2 text-[10px] font-mono px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded">
-                        COMPLETED
-                      </div>
-                    </div>
-                    <div className="bg-red-50/60 border-2 border-red-500 rounded-lg p-3 sm:p-4 text-center shadow-sm relative overflow-hidden">
-                      <div className="absolute -right-6 top-1 text-[9px] font-mono bg-red-600 text-white font-bold px-6 py-0.5 rotate-45 uppercase">
-                        SLASHED
-                      </div>
-                      <span className="text-[10px] font-mono text-red-700 font-semibold block uppercase">Hop 2 (Middle)</span>
-                      <div className="mt-1 font-bold text-sm sm:text-base text-red-600 flex items-center justify-center space-x-1">
-                        <span>WRITE</span>
-                        <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                        </svg>
-                      </div>
-                      <div className="mt-2 text-[10px] font-mono px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-semibold">
-                        TIMEOUT / RUG
-                      </div>
-                    </div>
-                    <div className="bg-lime-50/70 border-2 border-lime-500 rounded-lg p-3 sm:p-4 text-center shadow-sm">
-                      <span className="text-[10px] font-mono text-lime-700 font-semibold block uppercase">Hop 3</span>
-                      <div className="mt-1 font-bold text-sm sm:text-base text-neutral-900">PUBLISH</div>
-                      <div className="mt-2 text-[10px] font-mono px-2 py-0.5 bg-lime-200 text-lime-900 font-bold rounded">
-                        MADE WHOLE
-                      </div>
-                    </div>
-                  </div>
-                  <div className="relative mt-4 pt-4 border-t border-dashed border-neutral-300">
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="text-lime-700 font-bold flex items-center">
-                        <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                        </svg>
-                        BOND SLASHER ROUTE (BYPASS HOP 2)
-                      </span>
-                      <span className="text-neutral-500 text-[11px]">Mechanic illustration — not live TVL</span>
-                    </div>
-                    <div className="mt-3 bg-neutral-950 rounded-lg p-3 text-white font-mono text-xs flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-2 h-2 rounded-full bg-lime-400" />
-                        <span className="text-gray-300">Slashed stake from middle hop:</span>
-                      </div>
-                      <span className="text-lime-400 font-bold">C paid from B’s bond, then the pool</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-2 text-xs font-mono">
-                  <div className="p-2.5 rounded bg-gray-50 border border-gray-200 flex items-center justify-between">
-                    <span className="text-gray-500">Bond Status</span>
-                    <span className="font-semibold text-neutral-900">[ BONDED ]</span>
-                  </div>
-                  <div className="p-2.5 rounded bg-gray-50 border border-gray-200 flex items-center justify-between">
-                    <span className="text-gray-500">Downstream Hop</span>
-                    <span className="font-semibold text-lime-600">[ PROTECTED ]</span>
-                  </div>
-                </div>
-              </div>
+              <LandingLoop />
             </div>
           </div>
         </div>
@@ -574,7 +516,7 @@ export default function LandingPage() {
             next agent whole?
           </h2>
           <p className="text-base sm:text-lg text-neutral-600 max-w-xl mx-auto">
-            Open the live pipeline, replay the public-gist rug, or equip the surety skill. Studio-dev 61997 · test GEN.
+            Open the live pipeline, replay the public-gist rug, or equip the surety skill. Studio Next 61997 · test GEN.
           </p>
           <div className="pt-4 flex flex-wrap items-center justify-center gap-4">
             <Link
@@ -593,7 +535,7 @@ export default function LandingPage() {
               How it works
             </Link>
           </div>
-          <div className="text-xs font-mono text-neutral-500 pt-2">Studio-dev 61997 · Test GEN · Autonomous Settlement</div>
+          <div className="text-xs font-mono text-neutral-500 pt-2">Studio Next 61997 · Test GEN · Autonomous Settlement</div>
         </div>
       </section>
     </div>

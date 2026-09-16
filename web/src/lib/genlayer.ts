@@ -1,4 +1,5 @@
 "use client";
+import { formatGlError } from "./formatError";
 
 import { createClient } from "genlayer-js";
 import {
@@ -91,28 +92,56 @@ export async function addOrSwitchStudioDev(eth: any) {
 }
 
 export async function waitSuccessful(client: any, txId: string) {
-  const wait =
-    client.waitForFinalization ||
-    client.waitForTransactionReceipt ||
-    (async ({ hash }: { hash: string }) => client.getTransaction?.(hash));
-  const tx = await wait.call(client, { hash: txId, status: "FINALIZED" });
-  let ok: boolean | undefined;
-  try {
-    const m: any = await import("genlayer-js");
-    if (typeof m.isSuccessful === "function") ok = m.isSuccessful(tx);
-  } catch {
-    ok = undefined;
+  let tx = null;
+  const startTime = Date.now();
+  
+  while (true) {
+    try {
+      if (client.waitForDecision) {
+        tx = await client.waitForDecision({ hash: txId });
+      } else {
+        tx = await client.getTransaction({ hash: txId });
+      }
+    } catch(e) {
+      console.warn("Polling error in waitSuccessful:", e);
+      tx = null;
+    }
+    
+    if (tx) {
+      let ok: boolean | undefined;
+      try {
+        const m: any = await import("genlayer-js");
+        if (typeof m.isSuccessful === "function") ok = m.isSuccessful(tx);
+      } catch {
+        ok = undefined;
+      }
+      
+      const exec = String(tx?.txExecutionResultName || tx?.execution_result || tx?.status || "");
+      const status = String(tx?.statusName || tx?.status || "").toUpperCase();
+      const statusOk = status.includes("ACCEPTED") || status.includes("FINALIZED") || status === "5" || status === "6" || (status.includes("CANCELED") && (exec.includes("FINISHED_WITH_RETURN") || exec.includes("SUCCESS")));
+      const execOk = exec.includes("FINISHED_WITH_RETURN") || exec.includes("SUCCESS");
+      
+      // If it has a status that means it's done executing
+      if (statusOk || (exec && exec !== "UNDEFINED" && exec !== "PENDING")) {
+        if (exec === "Unknown" || exec === "UNKNOWN") {
+          if (Date.now() - startTime > 30000) {
+            throw new Error(`Write failed: Unknown execution result. Check hash ${txId} in explorer`);
+          }
+          // continue polling
+        } else {
+          if (ok === false && !statusOk) {
+            const errStr = formatGlError(tx);
+            const errorObj: any = new Error(`Write failed: ${status} / ${exec} - ${errStr}`);
+            errorObj.tx = tx;
+            throw errorObj;
+          }
+          return tx;
+        }
+      }
+    }
+    
+    // sleep 5s to avoid 30 req/min rate limit
+    await new Promise(r => setTimeout(r, 5000));
   }
-  const exec = String(tx?.txExecutionResultName || tx?.execution_result || "");
-  const status = String(tx?.statusName || tx?.status || "").toUpperCase();
-  const statusOk = status.includes("ACCEPTED") || status.includes("FINALIZED");
-  const execOk = exec.includes("FINISHED_WITH_RETURN") || exec.includes("SUCCESS");
-  if (ok === false || (ok === undefined && (!statusOk || (exec && !execOk)))) {
-    throw new Error(
-      `Write failed: ${tx?.statusName || tx?.status} / ${tx?.txExecutionResultName || "no execution result"}`
-    );
-  }
-  return tx;
 }
-
 export { chainLabel };

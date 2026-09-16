@@ -26,7 +26,7 @@ if (!address) {
   process.exit(1);
 }
 
-const rpc = process.env.GENLAYER_STUDIO_URL || "https://studio-dev.genlayer.com/api";
+const rpc = process.env.GENLAYER_STUDIO_URL || "https://studio-next.genlayer.com/api";
 
 async function main() {
   let chain;

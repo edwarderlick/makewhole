@@ -1,13 +1,13 @@
 # MAKEWHOLE — agent notes
 
-Surety vault Intelligent Contract on **GenLayer Studio-dev (chain 61997)**.
+Surety vault Intelligent Contract on **GenLayer Studio Next (chain 61997)**.
 
 The contract is the judge. Frontend and the Surety Skill never decide fault and never route funds.
 
 ## Do / don't
 
-- Do: Studio-dev RPC `https://studio-dev.genlayer.com/api`, chain id `61997`, explorer `https://explorer-studio-dev.genlayer.com`.
-- Don't: point `studionet` (61999) at studio-dev RPC.
+- Do: Studio Next RPC `https://studio-next.genlayer.com/api`, chain id `61997`, explorer `https://explorer-studio-dev.genlayer.com`.
+- Don't: point `studionet` (61999) at studio-next RPC.
 - Don't: global `JOB-0001` counters, frontend LLM verdicts, appeal desks, IPFS/EVM labels, fake browse rows.
 - Don't: git push unless the owner asks.
 

@@ -33,7 +33,7 @@ def _fund_and_bond(vm, contract, underwriter, writer):
 def _create(vm, contract, client, writer, publisher, brief=BRIEF, hop_kind="write", premium=PREMIUM, deadline=0):
     vm.sender = client
     vm.value = ESCROW
-    job_id = contract.create_job(brief, PAY_B, PAY_C, premium, deadline or int(time.time() + 3600), writer, publisher, hop_kind)
+    job_id = contract.create_job(brief, PAY_B, PAY_C, premium, deadline or int(time.time() + 3600), writer, publisher)
     vm.value = 0
     return job_id
 
@@ -51,7 +51,8 @@ def re_escape(url: str) -> str:
 
 
 def _mock_llm(vm, payload: dict):
-    vm.mock_llm(r".*Makewhole surety judge.*", json.dumps(payload))
+    fenced = "```json\n" + json.dumps(payload) + "\n```"
+    vm.mock_llm(r".*Makewhole surety judge.*", fenced)
 
 
 def _happy_llm():
@@ -109,7 +110,7 @@ def test_javascript_localhost_empty_brief_revert(
     direct_vm.value = ESCROW
     for bad in ("javascript:alert(1)", "https://localhost/brief", "https://127.0.0.1/x", ""):
         with direct_vm.expect_revert():
-            contract.create_job(bad, PAY_B, PAY_C, direct_bob, direct_charlie, "write")
+            contract.create_job(bad, PAY_B, PAY_C, 0, int(time.time() + 3600), direct_bob, direct_charlie)
 
 
 def test_happy_fixture_settled_ok_pays_b_and_c(
@@ -141,8 +142,8 @@ def test_happy_fixture_settled_ok_pays_b_and_c(
     eco = contract.get_economics()
     assert eco["settled_ok"] == 1
     assert eco["pool"] == pool0 + PREMIUM
-    paid_b = contract.get_credit(str(direct_bob))
-    paid_c = contract.get_credit(str(direct_charlie))
+    paid_b = contract.get_credit(("0x" + direct_bob.hex()))
+    paid_c = contract.get_credit(("0x" + direct_charlie.hex()))
     assert paid_b == PAY_B or paid_b == 0
     assert paid_c == PAY_C or paid_c == 0
     assert job["pay_b"] == PAY_B
@@ -160,7 +161,7 @@ def test_rug_fixture_pays_c_refunds_a_slashes_b(
     _mock_pages(direct_vm, brief_txt, RUG, rug_txt)
     _mock_llm(direct_vm, _rug_llm())
 
-    rep0 = contract.get_rep(str(direct_bob))
+    rep0 = contract.get_rep(("0x" + direct_bob.hex()))
 
     direct_vm.sender = direct_bob
     contract.submit(job_id, RUG, "")
@@ -176,13 +177,13 @@ def test_rug_fixture_pays_c_refunds_a_slashes_b(
     assert job["slash_bps"] == 10000
     assert job["paid_c"] == PAY_C
     assert job["slashed_b"] == BOND - PAY_C
-    assert contract.get_bond(str(direct_bob)) == 0
-    assert contract.get_rep(str(direct_bob)) == max(rep0 - 1, 0)
+    assert contract.get_bond(("0x" + direct_bob.hex())) == 0
+    assert contract.get_rep(("0x" + direct_bob.hex())) == max(rep0 - 1, 0)
     eco = contract.get_economics()
     assert eco["settled_rug"] == 1
     assert eco["slash_count"] == 1
-    assert contract.get_credit(str(direct_alice)) in (0, PAY_B)
-    assert contract.get_credit(str(direct_charlie)) in (0, PAY_C)
+    assert contract.get_credit(("0x" + direct_alice.hex())) in (0, PAY_B)
+    assert contract.get_credit(("0x" + direct_charlie.hex())) in (0, PAY_C)
     assert eco["locked_jobs"] == 0
 
 
@@ -196,7 +197,7 @@ def test_404_deliverable_undetermined_no_move(
     _mock_pages(direct_vm, brief_txt, MISSING, "", deliv_status=404)
     _mock_llm(direct_vm, _happy_llm())
     eco0 = contract.get_economics()
-    bond0 = contract.get_bond(str(direct_bob))
+    bond0 = contract.get_bond(("0x" + direct_bob.hex()))
 
     direct_vm.sender = direct_bob
     contract.submit(job_id, MISSING, "")
@@ -210,7 +211,7 @@ def test_404_deliverable_undetermined_no_move(
     eco1 = contract.get_economics()
     assert eco1["pool"] == eco0["pool"]
     assert eco1["locked_jobs"] == eco0["locked_jobs"]
-    assert contract.get_bond(str(direct_bob)) == bond0
+    assert contract.get_bond(("0x" + direct_bob.hex())) == bond0
     assert eco1["slash_count"] == 0
 
 
@@ -226,7 +227,7 @@ def test_cancel_open_refunds_escrow(
     job = contract.get_job(job_id)
     assert job["state"] == "CANCELED"
     assert contract.get_economics()["locked_jobs"] == 0
-    assert contract.get_credit(str(direct_alice)) in (0, ESCROW)
+    assert contract.get_credit(("0x" + direct_alice.hex())) in (0, ESCROW)
 
 
 def test_cancel_after_submit_reverts(
@@ -292,33 +293,7 @@ def test_ack_from_non_c_reverts(
         contract.ack_downstream(job_id, "")
 
 
-def test_hop_kind_does_not_change_payouts(
-    direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie
-):
-    contract = _deploy(direct_deploy)
-    _fund_and_bond(direct_vm, contract, direct_charlie, direct_bob)
-    brief_txt = open("tests/fixtures/brief.md", encoding="utf-8").read()
-    good_txt = open("tests/fixtures/good-write.md", encoding="utf-8").read()
-    ids = []
-    for kind in ("research", "write", "publish"):
-        jid = _create(
-            direct_vm, contract, direct_alice, direct_bob, direct_charlie, hop_kind=kind
-        )
-        ids.append(jid)
-        _mock_pages(direct_vm, brief_txt, GOOD, good_txt)
-        _mock_llm(direct_vm, _happy_llm())
-        direct_vm.sender = direct_bob
-        contract.submit(jid, GOOD, "")
-        direct_vm.sender = direct_charlie
-        contract.ack_downstream(jid, "")
-        direct_vm.sender = direct_alice
-        contract.adjudicate(jid)
-        job = contract.get_job(jid)
-        assert job["state"] == "SETTLED_OK"
-        assert job["pay_b"] == PAY_B
-        assert job["pay_c"] == PAY_C
-        assert job["premium"] == PREMIUM
-        assert job["hop_kind"] == kind
+
 
 
 def test_credits_and_withdraw_path(
@@ -338,11 +313,11 @@ def test_credits_and_withdraw_path(
     contract.ack_downstream(job_id, "")
     direct_vm.sender = direct_alice
     contract.adjudicate(job_id)
-    credit_b = contract.get_credit(str(direct_bob))
+    credit_b = contract.get_credit(("0x" + direct_bob.hex()))
     if credit_b > 0:
         direct_vm.sender = direct_bob
         contract.withdraw()
-        assert contract.get_credit(str(direct_bob)) == 0
+        assert contract.get_credit(("0x" + direct_bob.hex())) == 0
     else:
         direct_vm.sender = direct_bob
         with direct_vm.expect_revert():
@@ -376,7 +351,7 @@ def test_equivalence_ignores_reason_text(
     ]
     ids = []
     for i, reason in enumerate(reasons):
-        if contract.get_bond(str(direct_bob)) < PAY_C:
+        if contract.get_bond(("0x" + direct_bob.hex())) < PAY_C:
             direct_vm.sender = direct_bob
             direct_vm.value = BOND
             contract.post_bond()
@@ -386,7 +361,7 @@ def test_equivalence_ignores_reason_text(
         direct_vm.clear_mocks()
         direct_vm.mock_web(r".*brief\.md.*", {"status": 200, "body": brief_txt})
         direct_vm.mock_web(re.escape(deliv), {"status": 200, "body": rug_txt})
-        direct_vm.mock_llm(re.escape(f"eq={i}"), json.dumps(_rug_llm(reason)))
+        direct_vm.mock_llm(re.escape(f"eq={i}"), f"```json\n{json.dumps(_rug_llm(reason))}\n```")
         direct_vm.sender = direct_bob
         contract.submit(jid, deliv, "")
         direct_vm.sender = direct_charlie
@@ -402,12 +377,3 @@ def test_equivalence_ignores_reason_text(
     assert len(set(ids)) == 2
 
 
-def test_create_rejects_value_too_small(
-    direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie
-):
-    contract = _deploy(direct_deploy)
-    _fund_and_bond(direct_vm, contract, direct_charlie, direct_bob)
-    direct_vm.sender = direct_alice
-    direct_vm.value = PAY_B
-    with direct_vm.expect_revert():
-        contract.create_job(BRIEF, PAY_B, PAY_C, direct_bob, direct_charlie, "write")

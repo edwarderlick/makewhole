@@ -31,6 +31,7 @@ export default function BrowsePage() {
         const ids: string[] = (await views.listIds(client)) || [];
         const rows: Job[] = [];
         for (const id of ids.slice().reverse()) {
+          if (!live) break;
           try {
             rows.push(await views.getJob(client, id));
           } catch {

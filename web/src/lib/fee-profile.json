@@ -1,0 +1,65 @@
+{
+  "create_job": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "0",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  },
+  "post_bond": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "0",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  },
+  "submit": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "0",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  },
+  "ack_downstream": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "0",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  },
+  "adjudicate": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "30000000000000000",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  },
+  "cancel": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "30000000000000000",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  },
+  "withdraw": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "30000000000000000",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  }
+}

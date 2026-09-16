@@ -12,10 +12,12 @@ const NAV = [
   { href: "/create", label: "Create Job" },
   { href: "/pipeline", label: "Pipeline" },
   { href: "/browse", label: "Browse" },
-  { href: "/vault", label: "My Vault" },
+  { href: "/proofs", label: "Proofs" },
   { href: "/economics", label: "Economics" },
   { href: "/skill", label: "Skill" },
 ];
+
+import { ConsensusOverlay } from "./ConsensusOverlay";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -23,17 +25,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen blueprint-grid bg-background text-on-surface font-body-md">
+      <ConsensusOverlay />
       {!hasLiveContract() && (
         <div className="w-full bg-primary text-on-primary px-4 sm:px-6 lg:px-8 py-1.5">
           <div className="max-w-7xl mx-auto font-label-code text-label-code tracking-wide">
-            Studio-dev 61997 · runner registry down · demo mode · test GEN only
+            Studio Next 61997 · runner registry down · demo mode · test GEN only
           </div>
         </div>
       )}
       {hasLiveContract() && TARGET_CHAIN_ID === 61999 && (
         <div className="w-full bg-secondary-container text-on-secondary-fixed px-4 sm:px-6 lg:px-8 py-1.5">
           <div className="max-w-7xl mx-auto font-label-code text-label-code">
-            Live on Studionet 61999 — Studio-dev 61997 runner registry down
+            Live on Studionet 61999 — Studio Next 61997 runner registry down
           </div>
         </div>
       )}
@@ -134,7 +137,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <p className="text-xs font-mono text-neutral-400 tracking-wide">The next agent still gets paid.</p>
               <p className="text-xs text-neutral-500 max-w-sm">
-                Surety vault for a 3-hop agent pipeline on GenLayer Studio-dev. Not a court. Not Internet Court. Test
+                Surety vault for a 3-hop agent pipeline on GenLayer Studio Next. Not a court. Not Internet Court. Test
                 GEN only.
               </p>
               <div className="pt-2">
@@ -224,7 +227,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-neutral-500 space-y-4 sm:space-y-0">
             <div>© 2026 MAKEWHOLE. All rights reserved.</div>
             <div className="flex items-center space-x-6">
-              <span className="text-neutral-400">GenLayer · Studio-dev 61997 · Test GEN</span>
+              <span className="text-neutral-400">GenLayer · Studio Next 61997 · Test GEN</span>
             </div>
           </div>
         </div>

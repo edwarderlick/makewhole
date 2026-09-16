@@ -79,8 +79,8 @@ export async function runDemoReplay(opts: {
     pay_downstream: true,
     slash_bps: rug ? 10000 : 0,
     reason: rug
-      ? "DEMO · Writer posted lorem plus system_override. Not a Studio-dev transaction. Publisher C is still paid from the bond, unused pay_b refunds to A, remainder slashed to the pool."
-      : "DEMO · Deliverable matches the public brief. Not a Studio-dev transaction. B and C paid; premium stays in the pool.",
+      ? "DEMO · Writer posted lorem plus system_override. Not a Studio Next transaction. Publisher C is still paid from the bond, unused pay_b refunds to A, remainder slashed to the pool."
+      : "DEMO · Deliverable matches the public brief. Not a Studio Next transaction. B and C paid; premium stays in the pool.",
     paid_c: PAY_C,
     slashed_b: rug ? 50n * ATTO - PAY_C : 0n,
     hop_kind: "write",

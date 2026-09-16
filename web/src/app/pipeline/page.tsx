@@ -8,6 +8,7 @@ import { formatGen, parseGen, shortAddr, shortId } from "@/lib/format";
 import { StatusChip } from "@/components/StatusChip";
 import { TxButton } from "@/components/TxButton";
 import { EvidenceLink } from "@/components/EvidenceLink";
+import { LandingLoop } from "@/components/LandingLoop";
 import { DEMO_MARK, FIXTURES, getDemoJob, runDemoReplay, type DemoJob } from "@/lib/demo";
 
 export default function PipelinePage() {
@@ -46,6 +47,9 @@ export default function PipelinePage() {
     views.getEconomics(client).then(setEco).catch(() => {});
   }, [client]);
 
+
+
+
   const role =
     !account || !job
       ? null
@@ -83,7 +87,7 @@ export default function PipelinePage() {
           <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
             {job ? <StatusChip state={job.state} /> : <span className="font-label-status text-label-status text-on-surface-variant">[ IDLE ]</span>}
             <span className="font-body-sm text-body-sm text-on-surface-variant hidden sm:inline">
-              Studio-dev · Chain 61997
+              Studio Next · Chain 61997
             </span>
           </div>
         </div>
@@ -118,6 +122,10 @@ export default function PipelinePage() {
           </button>
         </div>
         {spin && <p className="mb-4 font-label-code text-label-code">{spin}</p>}
+
+        <div className="mb-12">
+          <LandingLoop pauseOn={rug ? "rug" : "ok"} />
+        </div>
 
         <div className="relative w-full">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
@@ -318,11 +326,11 @@ export default function PipelinePage() {
                 <TxButton
                   label="ADJUDICATE"
                   onClick={async () => {
-                    setSpin("Waiting on consensus");
                     try {
-                      return await writes.adjudicate(client, job.id);
+                      const res = await writes.adjudicate(client, job.id);
+                      setSpin("Waiting on consensus");
+                      return res;
                     } finally {
-                      setSpin("Settling GEN");
                       await refresh();
                     }
                   }}
@@ -340,9 +348,9 @@ export default function PipelinePage() {
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <Verdict k="fault" v={job ? String(job.fault) : rug ? '"B" (Writer)' : '"none"'} err={hopBCracked} />
-              <Verdict k="pay_downstream" v={job ? String(job.pay_downstream) : "true"} />
-              <Verdict k="slash_bps" v={job ? String(job.slash_bps) : rug ? "10000 (100.00%)" : "0"} />
+              <Verdict k="fault" v={job && job.state.includes("SETTLED") ? String(job.fault) : "-"} err={hopBCracked} />
+              <Verdict k="pay_downstream" v={job && job.state.includes("SETTLED") ? String(job.pay_downstream) : "-"} />
+              <Verdict k="slash_bps" v={job && job.state.includes("SETTLED") ? String(job.slash_bps) : "-"} />
             </div>
             <div className="bg-surface-container-lowest text-on-surface p-6 rounded shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
@@ -373,10 +381,8 @@ export default function PipelinePage() {
         <div className="grid md:grid-cols-2 gap-6 mt-8">
           <div className="border border-outline-variant p-6 space-y-3 bg-white rounded-xl">
             <div className="font-label-status text-label-status">MONEY RAIL</div>
-            <Field label="Fund pool GEN" value={poolAmt} onChange={setPoolAmt} />
-            <TxButton label="fund_pool" variant="lime" onClick={() => writes.fundPool(client, parseGen(poolAmt))} />
-            <Field label="Post bond GEN" value={bondAmt} onChange={setBondAmt} />
-            <TxButton label="post_bond" variant="lime" onClick={() => writes.postBond(client, parseGen(bondAmt))} />
+
+
           </div>
           <div className="border border-outline-variant p-6 space-y-3 bg-white rounded-xl">
             <div className="font-label-status text-label-status">REPLAY GIST</div>
@@ -386,12 +392,12 @@ export default function PipelinePage() {
               <TxButton label="submit as B" onClick={() => writes.submit(client, job.id, deliv, "").then((t) => { refresh(); return t; })} />
             )}
             {live && job && job.state === "IN_FLIGHT" && role === "C" && (
-              <TxButton label="ack as C" onClick={() => writes.ack(client, job.id, pub).then((t) => { refresh(); return t; })} />
+              <TxButton label="ack as C" onClick={() => writes.ack(client, job.id).then((t) => { refresh(); return t; })} />
             )}
             {live && job && (job.state === "OPEN" || job.state === "BONDED") && role === "A" && (
               <TxButton label="cancel" variant="ghost" onClick={() => writes.cancel(client, job.id).then((t) => { refresh(); return t; })} />
             )}
-            {live && job && job.state === "UNDETERMINED" && (
+            {live && job && job.state === "ACKED" && (
               <TxButton label="Retry adjudicate" onClick={() => writes.adjudicate(client, job.id).then((t) => { refresh(); return t; })} />
             )}
           </div>

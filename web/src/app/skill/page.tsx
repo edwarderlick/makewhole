@@ -1,51 +1,76 @@
 "use client";
-
-import { useState } from "react";
-import { useWallet } from "@/lib/wallet";
-import { views, writes } from "@/lib/contract";
-import { TxButton } from "@/components/TxButton";
+import { useEffect, useState } from "react";
 import { PageHero } from "@/components/PageHero";
 
 export default function SkillPage() {
-  const { client } = useWallet();
-  const [jobId, setJobId] = useState("");
-  const [url, setUrl] = useState("");
-  const [out, setOut] = useState<string>("");
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <PageHero
-        kicker="SKILL // makewhole-surety"
-        title="Surety Skill"
-        lede="Four tools. The skill never sends GEN. Preflight: if not check_bond(job).bonded: raise SystemExit(1)."
-      />
-      <pre className="bg-[#0a0a0a] text-lime-400 p-6 rounded-xl font-label-code text-label-code overflow-x-auto">
-{`# copy skills/makewhole-surety/ into your agent skills dir
-from makewhole import check_bond, ack_hop, adjudicate, get_settlement
+  const [demoUrl, setDemoUrl] = useState("");
+  const [demoResponse, setDemoResponse] = useState<string | null>(null);
 
-info = check_bond(job_id)
-if not info.get("bonded"):
-    raise SystemExit(1)  # do not burn compute
-# empty MAKEWHOLE_CONTRACT → bonded=false, reason=NO_CONTRACT
-`}
-      </pre>
-      <div className="grid md:grid-cols-2 gap-6 mt-8">
-        <div className="bg-white border border-neutral-200 rounded-xl p-6 space-y-3">
-          <label className="font-label-code text-[12px]">job_id</label>
-          <input className="w-full border border-outline-variant px-pad-sm py-pad-xs font-label-code text-[12px]" value={jobId} onChange={(e) => setJobId(e.target.value)} />
-          <label className="font-label-code text-[12px]">deliverable / publish URL</label>
-          <input className="w-full border border-outline-variant px-pad-sm py-pad-xs font-label-code text-[12px]" value={url} onChange={(e) => setUrl(e.target.value)} />
-          <div className="flex flex-wrap gap-pad-sm">
-            <button className="px-pad-sm py-pad-xs bg-white border border-primary font-label-code text-[12px]" onClick={async () => setOut(JSON.stringify(await views.checkBond(client, jobId), null, 2))}>
-              check_bond
-            </button>
-            <TxButton label="ack_hop" onClick={() => writes.ack(client, jobId, url)} />
-            <TxButton label="adjudicate" onClick={() => writes.adjudicate(client, jobId)} />
-            <button className="px-pad-sm py-pad-xs bg-white border border-primary font-label-code text-[12px]" onClick={async () => setOut(JSON.stringify(await views.getSettlement(client, jobId), null, 2))}>
-              get_settlement
-            </button>
+  useEffect(() => {
+    // In a real app we'd fetch from /proofs to get a demo ID. 
+    // Here we'll just use a placeholder to show the shape if none found,
+    // or you could replace this with a real id from the chain.
+    const base = typeof window !== "undefined" && window.location.hostname !== "localhost"
+      ? window.location.origin
+      : "https://makewhole.vercel.app";
+    const url = `${base}/api/skill/check_bond?job=1`;
+    setDemoUrl(url);
+  }, []);
+
+  const testDemo = async () => {
+    try {
+      setDemoResponse("Fetching...");
+      const r = await fetch(demoUrl);
+      const data = await r.json();
+      setDemoResponse(JSON.stringify(data, null, 2));
+    } catch (e: any) {
+      setDemoResponse(`Error: ${e.message}`);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-24">
+      <PageHero
+        kicker="AGENT_DOCS // SKILL"
+        title="Agentic Surety Skill"
+        lede="Before spinning up your GPUs or executing expensive inference, your agent MUST call this endpoint. Fail closed if not bonded."
+      />
+
+      <div className="space-y-12 text-on-surface mt-8">
+        <section className="bg-white border border-neutral-200 rounded-xl p-6 shadow-sm">
+          <h2 className="font-headline-sm tracking-widest uppercase mb-4 text-[#65a30d]">Read-Only Endpoint</h2>
+          <p className="font-body-md text-neutral-600 mb-6">
+            The intelligent contract is the ultimate judge. The agent only reads from it. NEVER send GEN to a client or try to execute <code className="bg-gray-100 text-red-600 px-1 rounded">writeContract</code> via the skill. 
+          </p>
+          
+          <div className="bg-[#0a0a0a] rounded-lg overflow-hidden border border-neutral-800">
+             <div className="bg-neutral-900 px-4 py-2 flex items-center border-b border-neutral-800">
+               <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-400">cURL Example</span>
+             </div>
+             <div className="p-4 overflow-x-auto text-sm font-mono text-[#b6ff3b]">
+               <pre><code>curl -X GET "{demoUrl || 'https://.../api/skill/check_bond?job=...'}"</code></pre>
+             </div>
           </div>
-        </div>
-        <pre className="bg-surface-container-low p-pad-md font-label-code text-[12px] min-h-[240px] overflow-auto">{out || "view output"}</pre>
+        </section>
+
+        <section className="bg-white border border-neutral-200 rounded-xl p-6 shadow-sm">
+          <h2 className="font-headline-sm tracking-widest uppercase mb-4 text-[#65a30d]">Live Test</h2>
+          <div className="flex items-center space-x-4 mb-4">
+             <input type="text" value={demoUrl} onChange={(e) => setDemoUrl(e.target.value)} className="flex-1 font-mono text-sm px-3 py-2 border border-neutral-300 rounded" />
+             <button onClick={testDemo} className="bg-black hover:bg-neutral-800 text-white uppercase tracking-wider text-xs px-4 py-2 rounded font-bold">Test</button>
+          </div>
+          
+          {demoResponse && (
+            <div className="bg-[#0a0a0a] rounded-lg overflow-hidden border border-neutral-800">
+               <div className="bg-neutral-900 px-4 py-2 flex items-center border-b border-neutral-800">
+                 <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-400">Response</span>
+               </div>
+               <div className="p-4 overflow-x-auto text-sm font-mono text-white">
+                 <pre><code>{demoResponse}</code></pre>
+               </div>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

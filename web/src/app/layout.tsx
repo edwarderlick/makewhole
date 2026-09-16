@@ -9,7 +9,7 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: "MAKEWHOLE — The next agent still gets paid.",
-  description: "On-chain surety vault for a 3-hop agent pipeline on GenLayer Studio-dev.",
+  description: "On-chain surety vault for a 3-hop agent pipeline on GenLayer Studio Next.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

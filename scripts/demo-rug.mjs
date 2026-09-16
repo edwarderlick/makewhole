@@ -14,7 +14,7 @@ if (!PK_A || !PK_B || !PK_C) {
   process.exit(1);
 }
 
-const rpcUrl = "https://studio-dev.genlayer.com/api";
+const rpcUrl = "https://studio-next.genlayer.com/api";
 
 const clientA = createClient({ chain: studioDevnet, account: PK_A, endpoint: rpcUrl });
 const clientB = createClient({ chain: studioDevnet, account: PK_B, endpoint: rpcUrl });
@@ -22,7 +22,7 @@ const clientC = createClient({ chain: studioDevnet, account: PK_C, endpoint: rpc
 
 async function waitSuccessful(client, txId) {
   const wait = client.waitForFinalization || client.waitForTransactionReceipt;
-  const tx = await wait.call(client, { hash: txId, status: "FINALIZED" });
+  const tx = await wait.call(client, { hash: txId, status: "ACCEPTED" });
   return tx;
 }
 
@@ -146,11 +146,11 @@ async function run() {
   };
 
   fs.mkdirSync(path.join(process.cwd(), "evidence"), { recursive: true });
-  fs.writeFileSync(path.join(process.cwd(), "evidence", "studio-dev.json"), JSON.stringify(out, (key, value) =>
+  fs.writeFileSync(path.join(process.cwd(), "evidence", "studio-next.json"), JSON.stringify(out, (key, value) =>
     typeof value === 'bigint' ? value.toString() : value
   , 2));
 
-  console.log("Done! Evidence saved to evidence/studio-dev.json");
+  console.log("Done! Evidence saved to evidence/studio-next.json");
 }
 
 run().catch(console.error);

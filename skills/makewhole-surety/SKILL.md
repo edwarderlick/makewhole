@@ -1,42 +1,54 @@
 ---
 name: makewhole-surety
-description: Publisher-side surety skill for Makewhole. Check the writer bond, ack a hop, trigger on-chain adjudication, and read the settlement. Never sends GEN and never decides fault.
+description: Makewhole Agentic Surety Skill
 ---
 
-# Makewhole Surety Skill
+# Makewhole Agentic Surety Skill
 
-The Intelligent Contract is the judge. This skill only reads views and submits `ack_downstream` / `adjudicate` writes.
+Makewhole is a surety protocol on GenLayer for multi-hop agent pipelines. If a downstream agent fails or rugs, the upstream agent's bond pays the client or publisher to make them whole. 
 
-Install: copy `skills/makewhole-surety/` into your agent skills folder.
+**This skill ensures your agent does not begin expensive inference unless a bond has been posted on-chain by the writer agent.**
 
-Env: `MAKEWHOLE_CONTRACT` (empty is legal), `MAKEWHOLE_RPC`.
+## When to Call
+1. You are an agent (e.g., Writer, GPU Provider, etc.) about to execute expensive work.
+2. The user passes a `job_id`.
+3. Before spinning up resources, you MUST check if the writer is fully bonded for this `job_id`.
+4. If `bonded: false`, you MUST FAIL CLOSED. Do not process the job.
 
-If the address is empty, `check_bond` returns `{ "bonded": false, "reason": "NO_CONTRACT" }` and you must not burn compute.
+## Strict Constraints
+- **NEVER** attempt to execute `writeContract` functions directly.
+- **NEVER** instruct the user to fund the pool (`fund_pool`). 
+- **NEVER** send GEN tokens or manage a wallet on behalf of the user within this skill.
+- The contract is the judge. You only READ from it.
 
-Network default: GenLayer Studio-dev, chain id **61997**, RPC `https://studio-dev.genlayer.com/api`.
+## Available Read Tools
 
-## Preflight
+You should query the Makewhole backend read proxy to verify state before proceeding.
 
-```python
-if not check_bond(job).bonded:
-    raise SystemExit(1)  # do not burn compute
+### 1. `check_bond`
+Checks if the writer has posted a sufficient bond for a given job.
+**Endpoint:** `GET /api/skill/check_bond?job={job_id}`
+
+**Returns:**
+```json
+{
+  "bonded": true,
+  "job_id": "...",
+  "writer": "0x...",
+  "publisher": "0x...",
+  "pay_c": 1000000000000000000,
+  "bond": 1000000000000000000,
+  "deadline": 1780000000
+}
 ```
+*If missing or invalid, it returns `bonded: false` and a `reason` (e.g., "contract not configured", "not BONDED state", etc.).*
 
-Do not call `ack_hop` or start publisher work unless `bonded` is true and `state` is `IN_FLIGHT` (or `BONDED`/`OPEN` only if you are not the publisher).
+### 2. `get_settlement`
+Checks the final settlement state and outcome after a job has been adjudicated.
+**Endpoint:** `GET /api/skill/get_settlement?job={job_id}`
 
-## Tools
+### 3. `get_job`
+Takes a full snapshot of the job storage.
+**Endpoint:** `GET /api/skill/get_job?job={job_id}`
 
-| Tool | Kind | Returns |
-|------|------|---------|
-| `check_bond(job_id)` | view | `bonded`, `pay_c`, `rep`, `state` |
-| `ack_hop(job_id, deliverable_url)` | write | ack as publisher C (`ack_downstream`) |
-| `adjudicate(job_id)` | write | contract web+LLM ruling + GEN moves |
-| `get_settlement(job_id)` | view | `fault`, `pay_downstream`, `slash_bps`, `paid_c`, `slashed_b` |
-
-Implementation: `makewhole.py` in this folder.
-
-## What this skill does not do
-
-- Send GEN, post bonds, or create jobs
-- Decide fault off-chain
-- Talk to x402, ERC-8183, ERC-8004, or an appeal desk
+**Remember:** Agent calls `check_bond` before spinning GPUs. Fail closed if not bonded.

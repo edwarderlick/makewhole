@@ -130,7 +130,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (client && account && chainId === TARGET_CHAIN_ID) {
       walletRequest(providerRef.current, "eth_getBalance", [account, "latest"])
-        .then((hex) => {
+        .then((hex: any) => {
           setBalance(BigInt(hex).toString());
         })
         .catch(() => setBalance(null));
@@ -169,7 +169,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setClient(buildClient(account, providerRef.current));
-    if (account) {
+    if (account && account !== "undefined" && account !== "null") {
       try {
         localStorage.setItem(LS_ACCOUNT, account);
       } catch {
@@ -209,7 +209,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         else {
           try {
             const saved = localStorage.getItem(LS_ACCOUNT);
-            if (saved) setAccount(saved);
+            if (saved && saved !== "undefined" && saved !== "null") setAccount(saved);
           } catch {
             /* ignore */
           }
@@ -352,7 +352,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         body={
           wallets.length === 0
             ? "No injected wallet. Install MetaMask or Rabby, then refresh."
-            : "Pick the extension to use. MAKEWHOLE will request accounts, then Studio-dev 61997."
+            : "Pick the extension to use. MAKEWHOLE will request accounts, then Studio Next 61997."
         }
         onClose={() => setPickerOpen(false)}
         closeLabel="Cancel"
