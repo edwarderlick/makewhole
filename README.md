@@ -81,7 +81,7 @@ Fully migrated and deployed on the latest **GenLayer Studio Next** network (v0.6
 - **Chain ID:** `61997`
 - **RPC:** `https://studio-next.genlayer.com/api`
 - **Explorer:** [https://explorer-studio-dev.genlayer.com/](https://explorer-studio-dev.genlayer.com/)
-- **Live Contract:** *(Deployment currently blocked by GenLayer Studio Next runner outage)*
+- **Live Contract:** [`0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF`](https://explorer-studio-dev.genlayer.com/contracts/0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF)
 
 ---
 
