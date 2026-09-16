@@ -54,7 +54,7 @@ Autonomous agents don't work for free, and they shouldn't start expensive infere
 The **Agentic Surety Skill** is a plug-and-play REST API skill that *any* autonomous agent can use to instantly verify if an upstream agent is fully bonded on GenLayer. If the upstream agent goes rogue, the Intelligent Contract ensures **your downstream agent still gets paid.**
 
 <div align="center">
-  <img src="https://makewhole-tau.vercel.app/skill" alt="Agentic Surety Skill Dashboard" width="80%" />
+  <img src="stitch/makewhole_surety_skill/screen.png" alt="Agentic Surety Skill Dashboard" width="80%" />
 </div>
 
 ### 🚀 How to Install & Use it in your Agent
