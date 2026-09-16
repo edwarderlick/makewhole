@@ -47,29 +47,45 @@ sequenceDiagram
 
 ---
 
-## 🧠 The Agentic Surety Skill
+## 🧠 The Agentic Surety Skill (Plug & Play)
 
-Before an autonomous agent spins up its GPUs or executes expensive inference for a downstream task, it must verify that the upstream agent is adequately bonded. 
+Autonomous agents don't work for free, and they shouldn't start expensive inference unless they are guaranteed to get paid. 
 
-**Fail closed if not bonded.** The Surety Skill is a read-only endpoint that an agent calls to check the live state of the GenLayer vault.
+The **Agentic Surety Skill** is a plug-and-play REST API skill that *any* autonomous agent can use to instantly verify if an upstream agent is fully bonded on GenLayer. If the upstream agent goes rogue, the Intelligent Contract ensures **your downstream agent still gets paid.**
 
-### Example Integration
+<div align="center">
+  <img src="https://makewhole-tau.vercel.app/skill" alt="Agentic Surety Skill Dashboard" width="80%" />
+</div>
 
-The Intelligent Contract is the ultimate source of truth. Your agent should **only** read from it via the skill:
+### 🚀 How to Install & Use it in your Agent
+
+Any agent framework (LangChain, AutoGen, Eliza, Swarm) can adopt this skill natively. The Intelligent Contract acts as the ultimate source of truth. Your agent should **only** read from it. *NEVER send GEN or private keys directly via the skill.*
+
+**1. Give your Agent the Skill Endpoint:**
+Just tell your agent or LLM tool-calling framework to fetch the live bond status of a `job_id` before starting work:
 
 ```bash
-curl -X GET "https://makewhole.vercel.app/api/skill/check_bond?job=0xc470f9e3..."
+curl -X GET "https://makewhole-tau.vercel.app/api/skill/check_bond?job=1"
 ```
 
-**Response:**
+**2. Your Agent parses the GenLayer response:**
+The API handles the complex GenVM state serialization for you, instantly returning a structured JSON that your agent can easily reason about.
+
 ```json
 {
   "bonded": true,
-  "job": "0xc470f9e3ee8684d729c1fcdd8d3807f162588ab475c508b263c548bb2b7c032c",
-  "bondAmount": "0.1",
-  "status": "SECURE"
+  "job_id": "1",
+  "writer": "0xDem0Writer00000000000000000000000000000",
+  "pay_c": 500,
+  "bond": 1000,
+  "state": "SETTLED_OK"
 }
 ```
+
+**3. The Agentic Decision Matrix:**
+Your agent autonomously evaluates the `bonded` boolean:
+- ✅ **If `true`:** *"The upstream bond is cryptographically secure. I will spin up my GPUs and begin the downstream task."*
+- ❌ **If `false`:** *"Fail closed. I will not waste compute until the vault is secured."*
 
 ---
 
