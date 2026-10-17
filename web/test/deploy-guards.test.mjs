@@ -12,7 +12,30 @@ import {
   evaluatePreflightReadiness,
   formatDeploymentPlan,
   getPreflightExitCode,
+  validateDeployerBalance,
+  assertNoDeploymentCollisions,
+  createPendingJournalIntent,
+  markPendingJournalBroadcast,
+  validateConfirmAddress,
+  calculateFundingDeficit,
+  assertKeychainAccountCanBeCreated,
+  RECEIPT_FILENAME,
+  PENDING_JOURNAL_FILENAME,
+  MAX_TARGET_DEPLOYER_BALANCE_GEN,
+  MAX_TARGET_DEPLOYER_BALANCE_WEI,
 } from "../../scripts/deploy-helpers.mjs";
+
+import {
+  parseKeychainArgs,
+  formatPreflightReport,
+  executePrepareAccount,
+  executeKeychainPreflight,
+  executeFundDeployer,
+  executeDeployFromKeychain,
+  KEYCHAIN_SERVICE,
+  DEPLOYER_KEYCHAIN_KEY,
+  FUNDER_KEYCHAIN_KEY,
+} from "../../scripts/deploy-keychain.mjs";
 
 test("CLI argument parsing: default invocation with no arguments remains dry-run", () => {
   const result = parseDeploymentArgs([]);
@@ -351,9 +374,9 @@ test("Environment update: replaces only target keys, preserves comments, blanks,
     "# Contract Settings",
     "NEXT_PUBLIC_CONTRACT_ADDRESS=0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF",
     "NEXT_PUBLIC_CHAIN_ID=61997",
-    "NEXT_PUBLIC_STUDIO_RPC=https://studio-next.genlayer.com/api",
+    "NEXT_PUBLIC_STUDIO_RPC=https://studio-dev.genlayer.com/api",
     "NEXT_PUBLIC_STUDIO_EXPLORER=https://explorer-studio-dev.genlayer.com",
-    "GENLAYER_STUDIO_URL=https://studio-next.genlayer.com/api",
+    "GENLAYER_STUDIO_URL=https://studio-dev.genlayer.com/api",
     "",
     "# Analytics & Telemetry",
     "NEXT_PUBLIC_ANALYTICS_ID=analytics_12345",
@@ -363,9 +386,9 @@ test("Environment update: replaces only target keys, preserves comments, blanks,
   const replacements = {
     NEXT_PUBLIC_CONTRACT_ADDRESS: "0xNewV2ContractAddress99999999999999999999",
     NEXT_PUBLIC_CHAIN_ID: "61997",
-    NEXT_PUBLIC_STUDIO_RPC: "https://studio-next.genlayer.com/api",
+    NEXT_PUBLIC_STUDIO_RPC: "https://studio-dev.genlayer.com/api",
     NEXT_PUBLIC_STUDIO_EXPLORER: "https://explorer-studio-dev.genlayer.com",
-    GENLAYER_STUDIO_URL: "https://studio-next.genlayer.com/api",
+    GENLAYER_STUDIO_URL: "https://studio-dev.genlayer.com/api",
   };
 
   const updated = updateEnvContent(existingEnv, replacements);
@@ -492,9 +515,9 @@ test("Preflight plan & exit code: blocked readiness sets exit code 1, prints blo
 
   const plan = formatDeploymentPlan({
     readiness: blocked,
-    networkName: "GenLayer Studio Next",
+    networkName: "GenLayer Studio-dev",
     chainId: 61997,
-    rpcUrl: "https://studio-next.genlayer.com/api",
+    rpcUrl: "https://studio-dev.genlayer.com/api",
     historicalV1Status: "UNREACHABLE (informational only)",
   });
 
@@ -516,13 +539,282 @@ test("Preflight plan & exit code: ready status permits exit 0 and prints deploym
 
   const plan = formatDeploymentPlan({
     readiness: ready,
-    networkName: "GenLayer Studio Next",
+    networkName: "GenLayer Studio-dev",
     chainId: 61997,
-    rpcUrl: "https://studio-next.genlayer.com/api",
+    rpcUrl: "https://studio-dev.genlayer.com/api",
     historicalV1Status: "REACHABLE: 22 methods, 12 jobs",
   });
 
   assert.match(plan, /Deployment Readiness: READY/);
   assert.match(plan, /GENLAYER_PRIVATE_KEY=0x\.\.\. npm run deploy:execute/);
   assert.doesNotMatch(plan, /DO NOT RUN deploy:execute/);
+});
+
+// ============================================================================
+// BALANCE GATE TESTS (scripts/deploy-helpers.mjs)
+// ============================================================================
+
+test("Balance validation: balance greater than fee => pass", () => {
+  const res = validateDeployerBalance(500_000n, 200_000n);
+  assert.strictEqual(res.sufficient, true);
+  assert.strictEqual(res.balance, 500_000n);
+  assert.strictEqual(res.feeValue, 200_000n);
+  assert.strictEqual(res.remaining, 300_000n);
+});
+
+test("Balance validation: balance equal to fee => pass", () => {
+  const res = validateDeployerBalance(250_000n, 250_000n);
+  assert.strictEqual(res.sufficient, true);
+  assert.strictEqual(res.balance, 250_000n);
+  assert.strictEqual(res.feeValue, 250_000n);
+  assert.strictEqual(res.remaining, 0n);
+});
+
+test("Balance validation: insufficient balance => fail", () => {
+  assert.throws(
+    () => validateDeployerBalance(100_000n, 300_000n),
+    (err) => {
+      assert.strictEqual(err.code, "INSUFFICIENT_BALANCE");
+      assert.strictEqual(err.balance, 100_000n);
+      assert.strictEqual(err.feeValue, 300_000n);
+      assert.strictEqual(err.deficit, 200_000n);
+      assert.match(err.message, /Insufficient deployer balance/);
+      return true;
+    }
+  );
+});
+
+test("Balance validation: malformed balance or fee => fail", () => {
+  assert.throws(() => validateDeployerBalance("not_a_number", 100n), /Invalid balance or feeValue/);
+  assert.throws(() => validateDeployerBalance(100n, "not_a_number"), /Invalid balance or feeValue/);
+  assert.throws(() => validateDeployerBalance(-10n, 100n), /negative amounts are not permitted/);
+  assert.throws(() => validateDeployerBalance(100n, -5n), /negative amounts are not permitted/);
+});
+
+test("Balance validation: insufficient deployer balance blocks deployment", () => {
+  // Simulates balance check before deployContract
+  const feeValue = 150_000_000_000_000n;
+  const balance = 50_000_000_000_000n;
+  assert.throws(
+    () => validateDeployerBalance(balance, feeValue),
+    (err) => {
+      assert.strictEqual(err.code, "INSUFFICIENT_BALANCE");
+      assert.strictEqual(err.deficit, 100_000_000_000_000n);
+      return true;
+    }
+  );
+});
+
+// ============================================================================
+// PENDING JOURNAL & COLLISION TESTS
+// ============================================================================
+
+test("Pending journal: completed receipt blocks duplicate broadcast", () => {
+  const fakeExistsSync = (filePath) => filePath.endsWith(RECEIPT_FILENAME);
+  assert.throws(
+    () => assertNoDeploymentCollisions({ deploymentsDir: "/fake/deployments", existsSyncFn: fakeExistsSync }),
+    /already exists\. Execution refused to prevent duplicate deployment/
+  );
+});
+
+test("Pending journal: pending journal blocks duplicate broadcast", () => {
+  const fakeExistsSync = (filePath) => filePath.endsWith(PENDING_JOURNAL_FILENAME);
+  assert.throws(
+    () => assertNoDeploymentCollisions({ deploymentsDir: "/fake/deployments", existsSyncFn: fakeExistsSync }),
+    /Pending deployment journal .* already exists\. An earlier deployment may be in flight or interrupted\. DO NOT REDEPLOY/
+  );
+});
+
+test("Pending journal: post-broadcast failure preserves pending journal and records BROADCAST status", () => {
+  const intent = createPendingJournalIntent({
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    rpcHost: "studio-dev.genlayer.com",
+    deployerAddress: "0x1111111111111111111111111111111111111111",
+    sourceCommit: "b2a31b9d5450e8dd131ff792d66e5f8d88a63809",
+    contractSourceSha256: "aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344",
+  });
+
+  assert.strictEqual(intent.status, "INTENT_CREATED");
+  assert.strictEqual(intent.project, "makewhole");
+  assert.strictEqual(intent.version, "v2");
+  assert.strictEqual(intent.chainId, 61997);
+  assert.strictEqual(intent.deployerAddress, "0x1111111111111111111111111111111111111111");
+
+  const txHash = "0x9999888877776666555544443333222211110000aaaabbbbccccddddeeeeffff";
+  const broadcastIntent = markPendingJournalBroadcast(intent, txHash);
+
+  assert.strictEqual(broadcastIntent.status, "BROADCAST");
+  assert.strictEqual(broadcastIntent.deploymentTxHash, txHash);
+  assert.ok(broadcastIntent.broadcastAtUtc);
+
+  // If receipt verification fails, the file is NOT removed and subsequent runs are blocked
+  const fakeExistsSync = (filePath) => filePath.endsWith(PENDING_JOURNAL_FILENAME);
+  assert.throws(
+    () => assertNoDeploymentCollisions({ deploymentsDir: "/fake/deployments", existsSyncFn: fakeExistsSync }),
+    /DO NOT REDEPLOY/
+  );
+});
+
+// ============================================================================
+// ADDRESS CONFIRMATION TESTS
+// ============================================================================
+
+test("Address confirmation: address confirmation match (exact and case-insensitive)", () => {
+  const addrLower = "0x1111111111111111111111111111111111111111";
+  const addrMixed = "0x1111111111111111111111111111111111111111";
+  const addrUpper = "0x1111111111111111111111111111111111111111";
+  assert.strictEqual(validateConfirmAddress(addrLower, addrLower), true);
+  assert.strictEqual(validateConfirmAddress("0xAaBbCcDd00000000000000000000000000000001", "0xaabbccdd00000000000000000000000000000001"), true);
+});
+
+test("Address confirmation: address confirmation mismatch", () => {
+  assert.throws(
+    () => validateConfirmAddress("0x1111111111111111111111111111111111111111", "0x2222222222222222222222222222222222222222"),
+    /Confirmation address mismatch/
+  );
+  assert.throws(
+    () => validateConfirmAddress("not_an_address", "0x2222222222222222222222222222222222222222"),
+    /Invalid confirmation address/
+  );
+});
+
+// ============================================================================
+// KEYCHAIN OPERATOR TESTS
+// ============================================================================
+
+test("Keychain operator: missing keychain account behavior", async () => {
+  // Mock keytar where account does not exist
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return null;
+    },
+    async setPassword() {},
+  };
+
+  let dryRunInvoked = false;
+  const preflightRes = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    runDryRunFn: () => { dryRunInvoked = true; },
+  });
+
+  assert.strictEqual(preflightRes.accountExists, false);
+  assert.strictEqual(preflightRes.publicAddress, null);
+  assert.strictEqual(dryRunInvoked, true);
+
+  // Future modes fail safely on missing account
+  await assert.rejects(
+    async () => executeDeployFromKeychain({
+      keytar: mockKeytar,
+      confirmAddress: "0x1111111111111111111111111111111111111111",
+    }),
+    /not found in OS keychain/
+  );
+
+  await assert.rejects(
+    async () => executeFundDeployer({
+      keytar: mockKeytar,
+      confirmAddress: "0x1111111111111111111111111111111111111111",
+    }),
+    /not found in OS keychain/
+  );
+});
+
+test("Keychain operator: existing account cannot be overwritten", async () => {
+  assert.throws(
+    () => assertKeychainAccountCanBeCreated("existing_secret_key"),
+    /Keychain account already exists\. Refusing to overwrite/
+  );
+
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return "existing_key";
+    },
+    async setPassword() {
+      assert.fail("setPassword must never be called on existing account");
+    },
+  };
+
+  await assert.rejects(
+    async () => executePrepareAccount({ keytar: mockKeytar }),
+    /Keychain account already exists/
+  );
+});
+
+test("Keychain operator: funding deficit calculation", () => {
+  // 0 balance => full 1 GEN deficit
+  const deficit0 = calculateFundingDeficit(0n);
+  assert.strictEqual(deficit0.targetWei, 1_000_000_000_000_000_000n);
+  assert.strictEqual(deficit0.currentBalanceWei, 0n);
+  assert.strictEqual(deficit0.deficitWei, 1_000_000_000_000_000_000n);
+  assert.strictEqual(deficit0.needsFunding, true);
+
+  // 0.4 GEN balance => 0.6 GEN deficit
+  const cur4 = 400_000_000_000_000_000n;
+  const deficit4 = calculateFundingDeficit(cur4);
+  assert.strictEqual(deficit4.deficitWei, 600_000_000_000_000_000n);
+  assert.strictEqual(deficit4.needsFunding, true);
+});
+
+test("Keychain operator: already-funded account produces zero transfer", async () => {
+  // Balance >= 1 GEN
+  const deficitSufficient = calculateFundingDeficit(1_000_000_000_000_000_000n);
+  assert.strictEqual(deficitSufficient.deficitWei, 0n);
+  assert.strictEqual(deficitSufficient.needsFunding, false);
+
+  const deficitExcess = calculateFundingDeficit(2_500_000_000_000_000_000n);
+  assert.strictEqual(deficitExcess.deficitWei, 0n);
+  assert.strictEqual(deficitExcess.needsFunding, false);
+
+  // Mock executeFundDeployer with funded account
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const funderKey = "0x2222222222222222222222222222222222222222222222222222222222222222";
+  const mockKeytar = {
+    async getPassword(service, key) {
+      if (key === DEPLOYER_KEYCHAIN_KEY) return deployerKey;
+      if (key === FUNDER_KEYCHAIN_KEY) return funderKey;
+      return null;
+    },
+  };
+
+  const mockClient = {
+    async getBalance({ address }) {
+      return 1_200_000_000_000_000_000n; // 1.2 GEN
+    },
+    async sendTransaction() {
+      assert.fail("sendTransaction must not be called when already funded");
+    },
+  };
+
+  const fundRes = await executeFundDeployer({
+    keytar: mockKeytar,
+    client: mockClient,
+    confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A", // address for deployerKey
+  });
+
+  assert.strictEqual(fundRes.funded, false);
+  assert.strictEqual(fundRes.reason, "ALREADY_SUFFICIENTLY_FUNDED");
+  assert.strictEqual(fundRes.deficitWei, 0n);
+});
+
+test("Keychain operator: maximum target balance is exactly 1 GEN", () => {
+  assert.strictEqual(MAX_TARGET_DEPLOYER_BALANCE_GEN, 1n);
+  assert.strictEqual(MAX_TARGET_DEPLOYER_BALANCE_WEI, 1_000_000_000_000_000_000n);
+});
+
+test("Keychain operator: private key is absent from formatted output", () => {
+  const secretKey = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d";
+  const publicAddress = "0x90F79bf6EB2c4f870365E785982E1f101E93b906";
+
+  const report = formatPreflightReport({
+    accountExists: true,
+    publicAddress,
+    balanceWei: 500_000_000_000_000_000n,
+    deficitInfo: calculateFundingDeficit(500_000_000_000_000_000n),
+  });
+
+  assert.doesNotMatch(report, new RegExp(secretKey));
+  assert.doesNotMatch(report, new RegExp(secretKey.slice(2)));
+  assert.match(report, new RegExp(publicAddress));
 });

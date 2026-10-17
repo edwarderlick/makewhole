@@ -1,7 +1,7 @@
 import { createClient } from "genlayer-js";
 import { studioDevnet, studionet } from "genlayer-js/chains";
 import { privateKeyToAccount } from "viem/accounts";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -17,6 +17,12 @@ import {
   evaluatePreflightReadiness,
   formatDeploymentPlan,
   getPreflightExitCode,
+  validateDeployerBalance,
+  assertNoDeploymentCollisions,
+  createPendingJournalIntent,
+  markPendingJournalBroadcast,
+  RECEIPT_FILENAME,
+  PENDING_JOURNAL_FILENAME,
 } from "./deploy-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,9 +34,9 @@ const HISTORICAL_V1_CONTRACT = "0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF";
 
 const SUPPORTED_CHAINS = {
   61997: {
-    name: "GenLayer Studio Next",
+    name: "GenLayer Studio-dev",
     chain: studioDevnet,
-    defaultRpcUrl: "https://studio-next.genlayer.com/api",
+    defaultRpcUrl: "https://studio-dev.genlayer.com/api",
     defaultExplorerUrl: "https://explorer-studio-dev.genlayer.com",
   },
   61999: {
@@ -243,9 +249,9 @@ async function main() {
   const rpcUrl = process.env.GENLAYER_RPC_URL || network.defaultRpcUrl;
   const explorerUrl = process.env.GENLAYER_EXPLORER_URL || network.defaultExplorerUrl;
 
-  // Enforce AGENTS.md rule: Don't point Studionet (61999) at studio-next RPC
-  if (chainId === 61999 && rpcUrl.includes("studio-next")) {
-    console.error("Error: Misconfigured network. Cannot point Studionet (chain 61999) at Studio Next RPC.");
+  // Enforce AGENTS.md rule: Don't point Studionet (61999) at studio-dev / studio-next RPC
+  if (chainId === 61999 && (rpcUrl.includes("studio-dev") || rpcUrl.includes("studio-next"))) {
+    console.error("Error: Misconfigured network. Cannot point Studionet (chain 61999) at Studio-dev RPC.");
     process.exit(1);
   }
 
@@ -442,13 +448,15 @@ async function main() {
     process.exit(1);
   }
 
-  // 2. Pre-broadcast receipt collision check
-  const receiptFile = resolve(deploymentsDir, "makewhole-v2.json");
-  if (existsSync(receiptFile)) {
-    console.error(`Error: Deployment artifact ${receiptFile} already exists.`);
-    console.error("Execution refused before broadcast to prevent overwriting existing receipt.");
+  // 2. Pre-broadcast collision checks (both final receipt and pending journal)
+  let collisionInfo;
+  try {
+    collisionInfo = assertNoDeploymentCollisions({ deploymentsDir });
+  } catch (e) {
+    console.error(`Error: ${e.message}`);
     process.exit(1);
   }
+  const { receiptFile, pendingFile } = collisionInfo;
 
   // 3. Enforce network identity via read-only eth_chainId probe
   console.log("Verifying network identity via read-only eth_chainId probe...");
@@ -509,35 +517,95 @@ async function main() {
     feesObj.messageAllocations = validatedFees.messageAllocations;
   }
 
+  // Balance validation before deployContract
+  console.log("Checking deployer balance...");
+  let deployerBalance;
+  try {
+    deployerBalance = await client.getBalance({ address: account.address });
+  } catch (e) {
+    console.error("Failed to query deployer balance:", e.message);
+    process.exit(1);
+  }
+
+  try {
+    validateDeployerBalance(deployerBalance, validatedFees.feeValue);
+    console.log(`Deployer balance verified: ${deployerBalance.toString()} wei (required fee: ${validatedFees.feeValue.toString()} wei)`);
+  } catch (e) {
+    console.error("Deployer balance check failed:");
+    console.error(`  Deployer Address : ${account.address}`);
+    console.error(`  Current Balance  : ${deployerBalance !== undefined ? deployerBalance.toString() : "unknown"} wei`);
+    console.error(`  Required Fee     : ${validatedFees.feeValue.toString()} wei`);
+    if (e.deficit !== undefined) {
+      console.error(`  Deficit          : ${e.deficit.toString()} wei`);
+    }
+    console.error("Aborting deployment before broadcast due to insufficient funds.");
+    process.exit(1);
+  }
+
+  // Atomically write non-secret pending intent before broadcasting
+  const pendingIntent = createPendingJournalIntent({
+    project: "makewhole",
+    version: "v2",
+    chainId,
+    rpcHost: new URL(rpcUrl).hostname,
+    deployerAddress: account.address,
+    sourceCommit: gitStatus.headCommit,
+    contractSourceSha256: gate.workingSha,
+  });
+
+  atomicWriteFile(pendingFile, JSON.stringify(pendingIntent, null, 2) + "\n");
+  console.log(`Recorded pending deployment intent to: ${pendingFile}`);
+
   // 5. Broadcast deployment transaction
   console.log("Broadcasting deployment transaction...");
-  const txHash = await client.deployContract({
-    code: workingCode,
-    args: [],
-    leaderOnly: false,
-    fees: feesObj,
-  });
+  let txHash;
+  try {
+    txHash = await client.deployContract({
+      code: workingCode,
+      args: [],
+      leaderOnly: false,
+      fees: feesObj,
+    });
+  } catch (e) {
+    console.error("deployContract broadcast failed:", e.message);
+    process.exit(1);
+  }
 
+  const broadcastIntent = markPendingJournalBroadcast(pendingIntent, txHash);
+  atomicWriteFile(pendingFile, JSON.stringify(broadcastIntent, null, 2) + "\n");
   console.log("Transaction broadcasted:", txHash);
-  console.log("Waiting for transaction receipt (finalized)...");
+  console.log(`Updated pending journal to BROADCAST: ${pendingFile}`);
 
-  const receipt = await client.waitForTransactionReceipt({
-    hash: txHash,
-    waitUntil: "finalized",
-    retries: 60,
-  });
+  console.log("Waiting for transaction receipt (finalized)...");
+  let receipt;
+  try {
+    receipt = await client.waitForTransactionReceipt({
+      hash: txHash,
+      waitUntil: "finalized",
+      retries: 60,
+    });
+  } catch (e) {
+    console.error("\n[FAILURE] Failed while waiting for transaction receipt:", e.message);
+    console.error(`Transaction hash: ${txHash}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY. Resume or inspect this transaction first.");
+    process.exit(1);
+  }
 
   // 6. Strict finalized receipt validation
   let contractAddress;
   try {
     contractAddress = validateDeployReceipt(receipt);
   } catch (e) {
-    console.error("Receipt validation failed:", e.message);
+    console.error("\n[FAILURE] Receipt validation failed:", e.message);
     console.error("Receipt summary:", {
       status: receipt.statusName || receipt.status,
       executionResult: receipt.txExecutionResultName || receipt.executionResult,
       hash: txHash,
     });
+    console.error(`Transaction hash: ${txHash}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY. Resume or inspect this transaction first.");
     process.exit(1);
   }
 
@@ -550,8 +618,10 @@ async function main() {
     await verifyDeployedContract(client, contractAddress);
     console.log("[PASS] Deployed contract verified: valid v2 schema, 0 initial jobs, all economics zeroed.");
   } catch (e) {
-    console.error("Post-deployment contract verification failed:", e.message);
-    console.error("Refusing to record receipt or update environment.");
+    console.error("\n[FAILURE] Post-deployment contract verification failed:", e.message);
+    console.error(`Transaction hash: ${txHash}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY. Resume or inspect this transaction first.");
     process.exit(1);
   }
 
@@ -574,6 +644,12 @@ async function main() {
 
   atomicWriteFile(receiptFile, JSON.stringify(receiptArtifact, null, 2) + "\n");
   console.log(`Wrote deployment receipt to: ${receiptFile}`);
+
+  // Remove pending journal only after final receipt is written
+  if (existsSync(pendingFile)) {
+    unlinkSync(pendingFile);
+    console.log(`Removed pending journal: ${pendingFile}`);
+  }
 
   // 9. Surgical atomic environment update if requested
   if (updateEnv) {

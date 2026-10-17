@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { dirname } from "node:path";
-import { mkdirSync, writeFileSync, renameSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { mkdirSync, writeFileSync, renameSync, existsSync } from "node:fs";
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 export const ADDR_REGEX = /^0x[0-9a-fA-F]{40}$/;
@@ -362,4 +362,183 @@ export function formatDeploymentPlan({
   }
   lines.push("----------------------------------------------------------------------\n");
   return lines.join("\n");
+}
+
+export const RECEIPT_FILENAME = "makewhole-v2.json";
+export const PENDING_JOURNAL_FILENAME = "makewhole-v2.pending.json";
+export const MAX_TARGET_DEPLOYER_BALANCE_GEN = 1n;
+export const MAX_TARGET_DEPLOYER_BALANCE_WEI = 1_000_000_000_000_000_000n; // 1 GEN = 10^18 wei
+
+/**
+ * Validates that the deployer account balance is sufficient to cover the required deployment fee.
+ * Expects balance and feeValue as bigint or non-negative decimal string/integers.
+ */
+export function validateDeployerBalance(balance, feeValue) {
+  let bal;
+  let fee;
+
+  try {
+    bal = typeof balance === "bigint" ? balance : BigInt(balance);
+    fee = typeof feeValue === "bigint" ? feeValue : BigInt(feeValue);
+  } catch {
+    throw new Error("Invalid balance or feeValue: values must be valid integer amounts.");
+  }
+
+  if (bal < 0n || fee < 0n) {
+    throw new Error("Invalid balance or feeValue: negative amounts are not permitted.");
+  }
+
+  if (bal < fee) {
+    const deficit = fee - bal;
+    const err = new Error(
+      `Insufficient deployer balance: balance (${bal.toString()} wei) is less than required fee (${fee.toString()} wei). Deficit: ${deficit.toString()} wei.`
+    );
+    err.code = "INSUFFICIENT_BALANCE";
+    err.balance = bal;
+    err.feeValue = fee;
+    err.deficit = deficit;
+    throw err;
+  }
+
+  return {
+    sufficient: true,
+    balance: bal,
+    feeValue: fee,
+    remaining: bal - fee,
+  };
+}
+
+/**
+ * Validates that neither a final deployment receipt nor an interrupted pending journal exists.
+ * Fails closed before any transaction is broadcast.
+ */
+export function assertNoDeploymentCollisions({ deploymentsDir, existsSyncFn = existsSync }) {
+  const receiptFile = resolve(deploymentsDir, RECEIPT_FILENAME);
+  const pendingFile = resolve(deploymentsDir, PENDING_JOURNAL_FILENAME);
+
+  if (existsSyncFn(receiptFile)) {
+    throw new Error(
+      `Deployment artifact ${receiptFile} already exists. Execution refused to prevent duplicate deployment.`
+    );
+  }
+
+  if (existsSyncFn(pendingFile)) {
+    throw new Error(
+      `Pending deployment journal ${pendingFile} already exists. An earlier deployment may be in flight or interrupted. DO NOT REDEPLOY. Inspect or resume the pending transaction first.`
+    );
+  }
+
+  return { receiptFile, pendingFile };
+}
+
+/**
+ * Creates the non-secret initial pending deployment intent object.
+ */
+export function createPendingJournalIntent({
+  project = "makewhole",
+  version = "v2",
+  chainId,
+  rpcHost,
+  deployerAddress,
+  sourceCommit,
+  contractSourceSha256,
+  createdAtUtc = new Date().toISOString(),
+}) {
+  if (!chainId || !rpcHost || !deployerAddress || !sourceCommit || !contractSourceSha256) {
+    throw new Error("Missing required fields for pending journal intent.");
+  }
+  return {
+    project,
+    version,
+    chainId,
+    rpcHost,
+    deployerAddress,
+    sourceCommit,
+    contractSourceSha256,
+    createdAtUtc,
+    status: "INTENT_CREATED",
+  };
+}
+
+/**
+ * Updates a pending intent to BROADCAST status with the deployment transaction hash.
+ */
+export function markPendingJournalBroadcast(pendingIntent, deploymentTxHash, broadcastAtUtc = new Date().toISOString()) {
+  if (!pendingIntent || typeof pendingIntent !== "object") {
+    throw new Error("Invalid pendingIntent: object required.");
+  }
+  if (pendingIntent.status !== "INTENT_CREATED") {
+    throw new Error(`Cannot transition to BROADCAST from status '${pendingIntent.status}'.`);
+  }
+  if (!deploymentTxHash || typeof deploymentTxHash !== "string" || !deploymentTxHash.startsWith("0x")) {
+    throw new Error("Cannot transition to BROADCAST without a valid transaction hash.");
+  }
+  return {
+    ...pendingIntent,
+    status: "BROADCAST",
+    deploymentTxHash,
+    broadcastAtUtc,
+  };
+}
+
+/**
+ * Validates confirmation address against derived address.
+ * Comparison is case-insensitive.
+ */
+export function validateConfirmAddress(confirmedAddr, derivedAddr) {
+  if (!confirmedAddr || typeof confirmedAddr !== "string" || !ADDR_REGEX.test(confirmedAddr)) {
+    throw new Error(`Invalid confirmation address '${confirmedAddr}'. Must be a valid 20-byte 0x address.`);
+  }
+  if (!derivedAddr || typeof derivedAddr !== "string" || !ADDR_REGEX.test(derivedAddr)) {
+    throw new Error(`Invalid derived address '${derivedAddr}'.`);
+  }
+  if (confirmedAddr.toLowerCase() !== derivedAddr.toLowerCase()) {
+    throw new Error(
+      `Confirmation address mismatch: confirmed '${confirmedAddr}' does not equal derived '${derivedAddr}'.`
+    );
+  }
+  return true;
+}
+
+/**
+ * Calculates funding deficit to reach maxTargetGen (default 1 GEN).
+ */
+export function calculateFundingDeficit(currentBalanceWei, maxTargetGen = MAX_TARGET_DEPLOYER_BALANCE_GEN) {
+  let cur;
+  try {
+    cur = typeof currentBalanceWei === "bigint" ? currentBalanceWei : BigInt(currentBalanceWei);
+  } catch {
+    throw new Error("Invalid currentBalanceWei: value must be a valid integer amount.");
+  }
+
+  if (cur < 0n) {
+    throw new Error("Invalid currentBalanceWei: negative amounts are not permitted.");
+  }
+
+  const targetWei = BigInt(maxTargetGen) * 1_000_000_000_000_000_000n;
+  if (cur >= targetWei) {
+    return {
+      targetWei,
+      currentBalanceWei: cur,
+      deficitWei: 0n,
+      needsFunding: false,
+    };
+  }
+
+  return {
+    targetWei,
+    currentBalanceWei: cur,
+    deficitWei: targetWei - cur,
+    needsFunding: true,
+  };
+}
+
+/**
+ * Ensures a keychain account can be created without overwriting an existing one.
+ */
+export function assertKeychainAccountCanBeCreated(existingPassword) {
+  if (existingPassword !== null && existingPassword !== undefined && existingPassword !== "") {
+    throw new Error("Keychain account already exists. Refusing to overwrite existing account.");
+  }
+  return true;
 }

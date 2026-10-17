@@ -8,6 +8,7 @@
     "deploy": "node scripts/deploy.mjs --dry-run",
     "deploy:dry-run": "node scripts/deploy.mjs --dry-run",
     "deploy:execute": "node scripts/deploy.mjs --execute",
+    "deploy:keychain:preflight": "node scripts/deploy-keychain.mjs",
     "verify": "node scripts/verify_payout.mjs",
     "web": "npm --prefix web run dev"
   },

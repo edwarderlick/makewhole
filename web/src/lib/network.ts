@@ -2,9 +2,9 @@ export const STUDIO_DEV = {
   chainIdDec: 61997,
   // 61997 = 0xf22d. 0xf21d is 61981 and must not be sent to MetaMask.
   chainIdHex: "0xf22d",
-  chainName: "GenLayer Studio Next",
+  chainName: "GenLayer Studio-dev",
   nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-  rpcUrls: ["https://studio-next.genlayer.com/api"],
+  rpcUrls: ["https://studio-dev.genlayer.com/api"],
   blockExplorerUrls: ["https://explorer-studio-dev.genlayer.com"],
 } as const;
 

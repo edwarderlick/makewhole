@@ -99,11 +99,11 @@ Your agent autonomously evaluates the `bonded` boolean:
 ## 🚀 Deployment & Network Status
 
 ### Current Live Deployment (Historical v1)
-The currently published and active contract on **GenLayer Studio Next** is **v1**:
+The currently published and active contract on **GenLayer Studio-dev** is **v1**:
 
-- **Network:** Studio Next
+- **Network:** GenLayer Studio-dev
 - **Chain ID:** `61997`
-- **RPC:** `https://studio-next.genlayer.com/api`
+- **RPC:** `https://studio-dev.genlayer.com/api`
 - **Explorer:** [https://explorer-studio-dev.genlayer.com/](https://explorer-studio-dev.genlayer.com/)
 - **Live Contract (v1):** [`0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF`](https://explorer-studio-dev.genlayer.com/contracts/0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF)
 
