@@ -1,11 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resolve, join } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import {
   parseDeploymentArgs,
   checkReleaseSourceGate,
   validateFeeQuote,
   validateDeployReceipt,
+  normalizeDeployReceipt,
+  validatePendingJournal,
+  validateReceiptArtifact,
+  validateRecoverySourceIntegrity,
+  validateReceiptMatchesJournal,
+  executeRecovery,
   validateFreshContractState,
   updateEnvContent,
   ZERO_ADDRESS,
@@ -25,6 +34,7 @@ import {
   MAX_TARGET_DEPLOYER_BALANCE_WEI,
   CRITICAL_RELEASE_FILES,
   TX_HASH_REGEX,
+  REQUIRED_V2_METHODS,
 } from "../../scripts/deploy-helpers.mjs";
 
 import {
@@ -290,18 +300,7 @@ test("Committed-source gate: SHA mismatch, uncommitted changes, or missing HEAD 
 });
 
 test("Deployed contract verification: requires full v2 schema, 0 initial jobs, and zeroed economics", () => {
-  const validSchema = {
-    methods: {
-      list_ids: {},
-      get_economics: {},
-      get_bond: {},
-      get_reserved_bond: {},
-      get_available_bond: {},
-      check_bond: {},
-      get_settlement: {},
-      fund_pool: {},
-    },
-  };
+  const validSchema = makeFullV2MockSchema();
 
   const zeroEconomics = {
     pool: 0n,
@@ -324,17 +323,8 @@ test("Deployed contract verification: requires full v2 schema, 0 initial jobs, a
   );
 
   // Missing schema method
-  const incompleteSchema = {
-    methods: {
-      list_ids: {},
-      get_economics: {},
-      // missing get_reserved_bond
-      get_bond: {},
-      get_available_bond: {},
-      check_bond: {},
-      get_settlement: {},
-    },
-  };
+  const incompleteSchema = makeFullV2MockSchema();
+  delete incompleteSchema.methods.get_reserved_bond;
   assert.throws(
     () =>
       validateFreshContractState({
@@ -1302,4 +1292,1608 @@ test("Keychain operator: funding balance at or above target => success", async (
   assert.strictEqual(fundRes.funded, true);
   assert.strictEqual(fundRes.verifiedBalanceWei, 1_000_000_000_000_000_000n);
   assert.strictEqual(fundRes.transferredWei, 1_000_000_000_000_000_000n);
+});
+
+test("Receipt normalization: valid camelCase receipt is accepted", () => {
+  const receipt = {
+    statusName: "FINALIZED",
+    txExecutionResultName: "FINISHED_WITH_RETURN",
+    recipient: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    txDataDecoded: {
+      type: "deploy",
+      contractAddress: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    },
+  };
+  const normalized = normalizeDeployReceipt(receipt);
+  assert.strictEqual(normalized.contractAddress, "0xddE116CEb433732C56a9E8FDf50ddF12D741e745");
+  assert.strictEqual(normalized.statusName, "FINALIZED");
+  assert.strictEqual(normalized.txExecutionResultName, "FINISHED_WITH_RETURN");
+  assert.strictEqual(validateDeployReceipt(receipt), "0xddE116CEb433732C56a9E8FDf50ddF12D741e745");
+});
+
+test("Receipt normalization: valid live snake_case receipt is accepted", () => {
+  const receiptSnake = {
+    status_name: "FINALIZED",
+    tx_execution_result_name: "FINISHED_WITH_RETURN",
+    recipient: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    tx_data_decoded: {
+      type: "deploy",
+      contract_address: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    },
+  };
+  const normalized = normalizeDeployReceipt(receiptSnake);
+  assert.strictEqual(normalized.contractAddress, "0xddE116CEb433732C56a9E8FDf50ddF12D741e745");
+  assert.strictEqual(validateDeployReceipt(receiptSnake), "0xddE116CEb433732C56a9E8FDf50ddF12D741e745");
+
+  // Also verify live Studio-dev observed format with data.contract_address and numeric type: 1
+  const liveObserved = {
+    status_name: "FINALIZED",
+    txExecutionResultName: "FINISHED_WITH_RETURN",
+    type: 1,
+    recipient: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    data: {
+      contract_address: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    },
+  };
+  assert.strictEqual(validateDeployReceipt(liveObserved), "0xddE116CEb433732C56a9E8FDf50ddF12D741e745");
+});
+
+test("Receipt normalization: conflicting camelCase/snake_case fields rejected", () => {
+  // Conflicting status
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        status_name: "ACCEPTED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Conflicting status fields in receipt/
+  );
+
+  // Conflicting execution result
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        tx_execution_result_name: "FAILED",
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Conflicting execution result fields in receipt/
+  );
+});
+
+test("Receipt normalization: conflicting contractAddress across data and decoded representations rejected", () => {
+  // Conflicting contract address in decoded objects
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+        tx_data_decoded: { type: "deploy", contract_address: "0x2222222222222222222222222222222222222222" },
+      }),
+    /Conflicting contract address representations in receipt/
+  );
+
+  // Conflicting contract address between data and txDataDecoded
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        type: 1,
+        data: { contract_address: "0x1111111111111111111111111111111111111111" },
+        txDataDecoded: { type: "deploy", contractAddress: "0x2222222222222222222222222222222222222222" },
+      }),
+    /Conflicting contract address representations in receipt/
+  );
+
+  // Conflicting contract address between root and data
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        contractAddress: "0x1111111111111111111111111111111111111111",
+        data: { contract_address: "0x2222222222222222222222222222222222222222" },
+        type: 1,
+      }),
+    /Conflicting contract address representations in receipt/
+  );
+});
+
+test("Receipt normalization: non-final status rejected", () => {
+  // Numeric status 7 cannot substitute for FINALIZED string
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status: 7,
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Transaction status 'undefined' is not FINALIZED/
+  );
+
+  // ACCEPTED status
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "ACCEPTED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        tx_data_decoded: { type: "deploy", contract_address: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Transaction status 'ACCEPTED' is not FINALIZED/
+  );
+});
+
+test("Receipt normalization: SUCCESS alias rejected", () => {
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "SUCCESS",
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Execution result 'SUCCESS' is not FINISHED_WITH_RETURN/
+  );
+
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "SUCCESS",
+        tx_data_decoded: { type: "deploy", contract_address: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Execution result 'SUCCESS' is not FINISHED_WITH_RETURN/
+  );
+});
+
+test("Receipt normalization: non-deploy transaction rejected (both numeric and string)", () => {
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        txDataDecoded: { type: "call", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /txDataDecoded type 'call' is not deploy/
+  );
+
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        tx_data_decoded: { type: "transfer", contract_address: "0x1111111111111111111111111111111111111111" },
+      }),
+    /tx_data_decoded type 'transfer' is not deploy/
+  );
+
+  // Numeric type 2
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        type: 2,
+        data: { contract_address: "0x1111111111111111111111111111111111111111" },
+      }),
+    /only wire type 1 or 'deploy' is permitted/
+  );
+});
+
+test("Receipt normalization: malformed/zero/mismatched contract address rejected", () => {
+  // Zero address
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        tx_data_decoded: { type: "deploy", contract_address: ZERO_ADDRESS },
+      }),
+    /not a valid nonzero 20-byte 0x address/
+  );
+
+  // Malformed address
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        tx_data_decoded: { type: "deploy", contract_address: "0xbad" },
+      }),
+    /not a valid nonzero 20-byte 0x address/
+  );
+
+  // Recipient mismatch
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        status_name: "FINALIZED",
+        tx_execution_result_name: "FINISHED_WITH_RETURN",
+        recipient: "0x2222222222222222222222222222222222222222",
+        tx_data_decoded: { type: "deploy", contract_address: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Recipient '0x2222222222222222222222222222222222222222' does not match/
+  );
+});
+
+test("Receipt normalization: receipt transaction hash missing, malformed, or mismatched rejected", () => {
+  const targetHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+  const otherHash = "0x0000000000000000000000000000000000000000000000000000000000000001";
+
+  // Missing hash when expectedTxHash is supplied
+  assert.throws(
+    () =>
+      normalizeDeployReceipt(
+        {
+          statusName: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+        },
+        { expectedTxHash: targetHash }
+      ),
+    /Receipt missing required transaction hash/
+  );
+
+  // Conflicting hash fields
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        hash: targetHash,
+        transaction_hash: otherHash,
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Conflicting transaction hash fields in receipt/
+  );
+
+  // Malformed hash
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        hash: "0xnot-a-hash",
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Receipt transaction hash '0xnot-a-hash' is not a valid 32-byte hex string/
+  );
+
+  // Mismatch with expected hash
+  assert.throws(
+    () =>
+      normalizeDeployReceipt(
+        {
+          statusName: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          hash: otherHash,
+          txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+        },
+        { expectedTxHash: targetHash }
+      ),
+    /does not match expected/
+  );
+});
+
+test("Receipt normalization: receipt sender missing, malformed, or mismatched rejected", () => {
+  const targetDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+  const otherDeployer = "0x1111111111111111111111111111111111111111";
+
+  // Missing sender when expectedDeployer is supplied
+  assert.throws(
+    () =>
+      normalizeDeployReceipt(
+        {
+          statusName: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+        },
+        { expectedDeployer: targetDeployer }
+      ),
+    /Receipt missing required sender/
+  );
+
+  // Conflicting sender fields
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        sender: targetDeployer,
+        from_address: otherDeployer,
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /Conflicting sender fields in receipt/
+  );
+
+  // Malformed sender
+  assert.throws(
+    () =>
+      normalizeDeployReceipt({
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+        from: "0xbad",
+        txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+      }),
+    /not a valid nonzero 20-byte address/
+  );
+
+  // Sender mismatch with expected
+  assert.throws(
+    () =>
+      normalizeDeployReceipt(
+        {
+          statusName: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          from: otherDeployer,
+          txDataDecoded: { type: "deploy", contractAddress: "0x1111111111111111111111111111111111111111" },
+        },
+        { expectedDeployer: targetDeployer }
+      ),
+    /does not match expected deployer/
+  );
+});
+
+test("Recovery: malformed pending journal rejected", () => {
+  assert.throws(() => validatePendingJournal(null), /journal is missing or not an object/);
+  assert.throws(() => validatePendingJournal({ project: "wrong" }), /Invalid journal project/);
+  assert.throws(() => validatePendingJournal({ project: "makewhole", version: "v1" }), /Invalid journal version/);
+  assert.throws(
+    () => validatePendingJournal({ project: "makewhole", version: "v2", status: "INTENT" }),
+    /Invalid journal status 'INTENT', expected 'BROADCAST'/
+  );
+  assert.throws(
+    () =>
+      validatePendingJournal({
+        project: "makewhole",
+        version: "v2",
+        status: "BROADCAST",
+        chainId: 1,
+      }),
+    /Invalid journal chainId/
+  );
+  assert.throws(
+    () =>
+      validatePendingJournal({
+        project: "makewhole",
+        version: "v2",
+        status: "BROADCAST",
+        chainId: 61997,
+        rpcHost: "evil.com",
+      }),
+    /Invalid journal rpcHost/
+  );
+  assert.throws(
+    () =>
+      validatePendingJournal({
+        project: "makewhole",
+        version: "v2",
+        status: "BROADCAST",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: "0xinvalid",
+      }),
+    /Invalid journal deployerAddress/
+  );
+  assert.throws(
+    () =>
+      validatePendingJournal({
+        project: "makewhole",
+        version: "v2",
+        status: "BROADCAST",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+        deploymentTxHash: "0xshort",
+      }),
+    /Invalid journal deploymentTxHash/
+  );
+});
+
+test("Recovery: unknown/unexpected fields in pending journal rejected", () => {
+  assert.throws(
+    () =>
+      validatePendingJournal({
+        project: "makewhole",
+        version: "v2",
+        status: "BROADCAST",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+        deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        createdAtUtc: "2026-10-17T17:30:12.025Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+        unrecognizedEvilField: "forged",
+      }),
+    /Unexpected field in pending deployment journal: 'unrecognizedEvilField'/
+  );
+});
+
+test("Recovery: non-exact RPC hostname rejected (substring matching rejected)", () => {
+  const base = {
+    project: "makewhole",
+    version: "v2",
+    status: "BROADCAST",
+    chainId: 61997,
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    createdAtUtc: "2026-10-17T17:30:12.025Z",
+    broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+  };
+
+  assert.throws(
+    () => validatePendingJournal({ ...base, rpcHost: "attacker-studio-dev.genlayer.com" }),
+    /expected exact 'studio-dev.genlayer.com'/
+  );
+  assert.throws(
+    () => validatePendingJournal({ ...base, rpcHost: "studio-dev.genlayer.com.evil.org" }),
+    /expected exact 'studio-dev.genlayer.com'/
+  );
+  assert.throws(
+    () => validatePendingJournal({ ...base, rpcHost: "studio-dev.genlayer.com/path" }),
+    /expected exact 'studio-dev.genlayer.com'/
+  );
+
+  assert.strictEqual(validatePendingJournal({ ...base, rpcHost: "studio-dev.genlayer.com" }), true);
+});
+
+test("Recovery: invalid createdAtUtc or broadcastAtUtc rejected", () => {
+  const base = {
+    project: "makewhole",
+    version: "v2",
+    status: "BROADCAST",
+    chainId: 61997,
+    rpcHost: "studio-dev.genlayer.com",
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    createdAtUtc: "2026-10-17T17:30:12.025Z",
+    broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+  };
+
+  assert.throws(
+    () => validatePendingJournal({ ...base, createdAtUtc: undefined }),
+    /Invalid journal createdAtUtc/
+  );
+  assert.throws(
+    () => validatePendingJournal({ ...base, createdAtUtc: "invalid-date" }),
+    /Invalid journal createdAtUtc/
+  );
+  assert.throws(
+    () => validatePendingJournal({ ...base, broadcastAtUtc: undefined }),
+    /Invalid journal broadcastAtUtc/
+  );
+  assert.throws(
+    () => validatePendingJournal({ ...base, broadcastAtUtc: "2026-99-99T99:99:99.999Z" }),
+    /Invalid journal broadcastAtUtc/
+  );
+  assert.throws(
+    () =>
+      validatePendingJournal({
+        ...base,
+        createdAtUtc: "2026-10-17T17:30:15.000Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.000Z",
+      }),
+    /broadcastAtUtc '2026-10-17T17:30:14.000Z' cannot be earlier than createdAtUtc '2026-10-17T17:30:15.000Z'/
+  );
+});
+
+test("Recovery: confirmation-address mismatch rejected", () => {
+  const journal = {
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+  };
+  assert.throws(
+    () => validateConfirmAddress("0x1111111111111111111111111111111111111111", journal.deployerAddress),
+    /Confirmation address mismatch/
+  );
+  assert.strictEqual(
+    validateConfirmAddress("0x5b8942987e95dfc3ea56f392e37011a86efb0baf", journal.deployerAddress),
+    true
+  );
+});
+
+test("Recovery: malformed receipt artifact rejected", () => {
+  const baseValid = {
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    networkName: "GenLayer Studio-dev",
+    rpcHost: "studio-dev.genlayer.com",
+    explorerBaseUrl: "https://explorer-studio-dev.genlayer.com",
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    contractAddress: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    executionResult: "FINISHED_WITH_RETURN",
+    broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+    recoveredAtUtc: "2026-10-17T17:30:20.000Z",
+    sdkVersion: "2.0.0-rc.1",
+  };
+
+  assert.throws(() => validateReceiptArtifact(null), /Receipt artifact is missing/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, project: "wrong" }), /Invalid receipt project/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, version: "v1" }), /Invalid receipt version/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, chainId: 1 }), /Invalid receipt chainId/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, networkName: "wrong-network" }), /Invalid receipt networkName/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, rpcHost: "evil.com" }), /Invalid receipt rpcHost/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, explorerBaseUrl: "https://evil-explorer.com" }), /Invalid receipt explorerBaseUrl/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, deployerAddress: "0xinvalid" }), /Invalid receipt deployerAddress/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, contractAddress: "0xinvalid" }), /Invalid receipt contractAddress/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, deploymentTxHash: "0xshort" }), /Invalid receipt deploymentTxHash/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, sourceCommit: "0xshort" }), /Invalid receipt sourceCommit/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, contractSourceSha256: "0xshort" }), /Invalid receipt contractSourceSha256/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, executionResult: "SUCCESS" }), /Invalid receipt executionResult/);
+
+  // Missing or malformed timestamps
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, broadcastAtUtc: undefined }), /Invalid receipt broadcastAtUtc/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, broadcastAtUtc: "not-a-date" }), /Invalid receipt broadcastAtUtc/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, recoveredAtUtc: undefined }), /Invalid receipt recoveredAtUtc/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, recoveredAtUtc: "2026-99-99" }), /Invalid receipt recoveredAtUtc/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, finalizedAtUtc: "invalid-finalized" }), /Invalid receipt finalizedAtUtc/);
+
+  // Missing or empty sdkVersion
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, sdkVersion: undefined }), /Invalid receipt sdkVersion/);
+  assert.throws(() => validateReceiptArtifact({ ...baseValid, sdkVersion: "   " }), /Invalid receipt sdkVersion/);
+
+  assert.strictEqual(validateReceiptArtifact(baseValid), true);
+});
+
+test("Recovery: validateReceiptMatchesJournal compares all required fields and detects mismatches", () => {
+  const journal = {
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    rpcHost: "studio-dev.genlayer.com",
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    createdAtUtc: "2026-10-17T17:30:12.025Z",
+    broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+    status: "BROADCAST",
+  };
+
+  const validReceipt = {
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    networkName: "GenLayer Studio-dev",
+    rpcHost: "studio-dev.genlayer.com",
+    explorerBaseUrl: "https://explorer-studio-dev.genlayer.com",
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    contractAddress: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    executionResult: "FINISHED_WITH_RETURN",
+    broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+    recoveredAtUtc: "2026-10-17T17:30:20.000Z",
+    sdkVersion: "2.0.0-rc.1",
+  };
+
+  assert.strictEqual(validateReceiptMatchesJournal({ receipt: validReceipt, journal }), true);
+
+  // Deployer mismatch
+  assert.throws(
+    () =>
+      validateReceiptMatchesJournal({
+        receipt: { ...validReceipt, deployerAddress: "0x1111111111111111111111111111111111111111" },
+        journal,
+      }),
+    /Deployer address mismatch/
+  );
+
+  // Contract address mismatch when confirmContractAddress is passed
+  assert.throws(
+    () =>
+      validateReceiptMatchesJournal({
+        receipt: validReceipt,
+        journal,
+        confirmContractAddress: "0x2222222222222222222222222222222222222222",
+      }),
+    /Confirmed contract address .* does not match receipt/
+  );
+
+  // Source commit mismatch
+  assert.throws(
+    () =>
+      validateReceiptMatchesJournal({
+        receipt: { ...validReceipt, sourceCommit: "0000000000000000000000000000000000000000" },
+        journal,
+      }),
+    /Source commit mismatch/
+  );
+
+  // Receipt/journal broadcast timestamp mismatch
+  assert.throws(
+    () =>
+      validateReceiptMatchesJournal({
+        receipt: { ...validReceipt, broadcastAtUtc: "2026-10-17T17:30:15.000Z" },
+        journal,
+      }),
+    /Broadcast timestamp mismatch: receipt has '2026-10-17T17:30:15.000Z', journal has '2026-10-17T17:30:14.669Z'/
+  );
+
+  // Recovered timestamp earlier than broadcast timestamp
+  assert.throws(
+    () =>
+      validateReceiptMatchesJournal({
+        receipt: { ...validReceipt, recoveredAtUtc: "2026-10-17T17:30:10.000Z" },
+        journal,
+      }),
+    /Receipt recoveredAtUtc '2026-10-17T17:30:10.000Z' cannot be earlier than broadcastAtUtc '2026-10-17T17:30:14.669Z'/
+  );
+});
+
+test("Recovery: contract schema requires complete 24-method v2 interface", () => {
+  assert.strictEqual(REQUIRED_V2_METHODS.length, 24);
+
+  const validEconomics = {
+    pool: 0,
+    locked_bonds: 0,
+    locked_jobs: 0,
+    credits: 0,
+    slash_count: 0,
+    settled_ok: 0,
+    settled_rug: 0,
+  };
+
+  // 1. Exactly the complete 24-method schema passes
+  assert.strictEqual(
+    validateFreshContractState({
+      schema: makeFullV2MockSchema(),
+      ids: [],
+      economics: validEconomics,
+    }),
+    true
+  );
+
+  // 2. Schema containing only the previous 7-method subset fails
+  const old7Subset = {
+    methods: {
+      list_ids: {},
+      get_economics: {},
+      get_bond: {},
+      get_reserved_bond: {},
+      get_available_bond: {},
+      check_bond: {},
+      get_settlement: {},
+    },
+  };
+  assert.throws(
+    () => validateFreshContractState({ schema: old7Subset, ids: [], economics: validEconomics }),
+    /Contract schema missing required v2 method/
+  );
+
+  // 3. Omission of each required method fails
+  for (const missingMethod of REQUIRED_V2_METHODS) {
+    const incompleteMethods = {};
+    for (const m of REQUIRED_V2_METHODS) {
+      if (m !== missingMethod) {
+        incompleteMethods[m] = {};
+      }
+    }
+    assert.throws(
+      () =>
+        validateFreshContractState({
+          schema: { methods: incompleteMethods },
+          ids: [],
+          economics: validEconomics,
+        }),
+      new RegExp(`Contract schema missing required v2 method '${missingMethod}'`)
+    );
+  }
+});
+
+test("Recovery: source integrity accepts later clean descendant commit with identical contract code", () => {
+  const journal = {
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+  };
+
+  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+
+  const mockExecGit = (args) => {
+    const cmd = args.join(" ");
+    if (cmd.includes("rev-parse --verify")) {
+      return "903c08382c0b415ca7067d49085df3128736df25\n";
+    }
+    if (cmd.includes("merge-base --is-ancestor")) {
+      return ""; // Exits 0: is ancestor!
+    }
+    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+      return contractSource;
+    }
+    if (cmd.includes("show HEAD:contracts/makewhole.py")) {
+      return contractSource;
+    }
+    if (cmd.includes("status --porcelain")) {
+      return ""; // clean!
+    }
+    throw new Error(`Unhandled git command in mock: ${cmd}`);
+  };
+
+  const res = validateRecoverySourceIntegrity({
+    rootPath: process.cwd(),
+    journal,
+    execGitFn: mockExecGit,
+  });
+
+  assert.strictEqual(res.passed, true);
+});
+
+test("Recovery: source integrity rejects non-ancestor journal commit", () => {
+  const journal = {
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+  };
+
+  const mockExecGit = (args) => {
+    const cmd = args.join(" ");
+    if (cmd.includes("rev-parse --verify")) {
+      return "commit_ok\n";
+    }
+    if (cmd.includes("merge-base --is-ancestor")) {
+      throw new Error("Command failed: git merge-base --is-ancestor (exit 1)");
+    }
+    return "";
+  };
+
+  assert.throws(
+    () =>
+      validateRecoverySourceIntegrity({
+        rootPath: process.cwd(),
+        journal,
+        execGitFn: mockExecGit,
+      }),
+    /is not an ancestor of current HEAD/
+  );
+});
+
+test("Recovery: source integrity rejects non-existent journal commit", () => {
+  const journal = {
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+  };
+
+  const mockExecGit = (args) => {
+    const cmd = args.join(" ");
+    if (cmd.includes("rev-parse --verify")) {
+      throw new Error("fatal: Needed a single revision");
+    }
+    return "";
+  };
+
+  assert.throws(
+    () =>
+      validateRecoverySourceIntegrity({
+        rootPath: process.cwd(),
+        journal,
+        execGitFn: mockExecGit,
+      }),
+    /does not exist in git history/
+  );
+});
+
+test("Recovery: source integrity rejects modified historical, HEAD, or working contract code", () => {
+  const journal = {
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+  };
+
+  // Historical mismatch
+  const mockHistMismatch = (args) => {
+    const cmd = args.join(" ");
+    if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
+    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+      return "# altered historical contract\n";
+    }
+    return "";
+  };
+  assert.throws(
+    () =>
+      validateRecoverySourceIntegrity({
+        rootPath: process.cwd(),
+        journal,
+        execGitFn: mockHistMismatch,
+      }),
+    /Historical contract source .* does not match journal/
+  );
+
+  // HEAD mismatch
+  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+  const mockHeadMismatch = (args) => {
+    const cmd = args.join(" ");
+    if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
+    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+      return contractSource;
+    }
+    if (cmd.includes("show HEAD:contracts/makewhole.py")) {
+      return "# altered HEAD contract\n";
+    }
+    return "";
+  };
+  assert.throws(
+    () =>
+      validateRecoverySourceIntegrity({
+        rootPath: process.cwd(),
+        journal,
+        execGitFn: mockHeadMismatch,
+      }),
+    /Current HEAD contract source .* does not match journal/
+  );
+});
+
+test("Recovery: source integrity rejects dirty critical tracked files", () => {
+  const journal = {
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+  };
+
+  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+  const mockDirtyGit = (args) => {
+    const cmd = args.join(" ");
+    if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
+    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+      return contractSource;
+    }
+    if (cmd.includes("show HEAD:contracts/makewhole.py")) {
+      return contractSource;
+    }
+    if (cmd.includes("status --porcelain")) {
+      return " M scripts/deploy-helpers.mjs\n";
+    }
+    return "";
+  };
+
+  assert.throws(
+    () =>
+      validateRecoverySourceIntegrity({
+        rootPath: process.cwd(),
+        journal,
+        execGitFn: mockDirtyGit,
+      }),
+    /Recovery requires critical tracked files to be clean/
+  );
+});
+
+test("Recovery CLI: parses --confirm-address and --confirm-contract-address (both space and equals)", () => {
+  const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+  const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+  // Space syntax
+  const parsedSpace = parseKeychainArgs([
+    "--recover",
+    "--confirm-address",
+    testDeployer,
+    "--confirm-contract-address",
+    testContract,
+  ]);
+  assert.strictEqual(parsedSpace.mode, "recover");
+  assert.strictEqual(parsedSpace.confirmAddress, testDeployer);
+  assert.strictEqual(parsedSpace.confirmContractAddress, testContract);
+
+  // Equals syntax
+  const parsedEquals = parseKeychainArgs([
+    "--recover",
+    `--confirm-address=${testDeployer}`,
+    `--confirm-contract-address=${testContract}`,
+  ]);
+  assert.strictEqual(parsedEquals.mode, "recover");
+  assert.strictEqual(parsedEquals.confirmAddress, testDeployer);
+  assert.strictEqual(parsedEquals.confirmContractAddress, testContract);
+});
+
+test("Recovery CLI: mode flags exclusivity is order-independent and rejects combinations/duplicates", () => {
+  // Combinations in both orders
+  assert.throws(() => parseKeychainArgs(["--preflight", "--recover"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--recover", "--preflight"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--fund", "--recover"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--recover", "--fund"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--deploy", "--recover"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--recover", "--deploy"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--prepare-account", "--recover"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--recover", "--prepare-account"]), /Cannot combine mode flags/);
+
+  // Duplicates
+  assert.throws(() => parseKeychainArgs(["--recover", "--recover"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--preflight", "--preflight"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--deploy", "--deploy"]), /Cannot combine mode flags/);
+  assert.throws(() => parseKeychainArgs(["--fund", "--fund"]), /Cannot combine mode flags/);
+});
+
+const baselineScratchEntries = new Set(
+  existsSync(resolve(process.cwd(), "scratch"))
+    ? readdirSync(resolve(process.cwd(), "scratch"))
+    : []
+);
+
+// Helper for hermetic tests that creates a uniquely generated directory under os.tmpdir()
+function createHermeticMockDir() {
+  const dir = mkdtempSync(join(tmpdir(), "makewhole-rec-test-"));
+  mkdirSync(resolve(dir, "deployments"), { recursive: true });
+  mkdirSync(resolve(dir, "web"), { recursive: true });
+  mkdirSync(resolve(dir, "contracts"), { recursive: true });
+
+  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+  writeFileSync(resolve(dir, "contracts", "makewhole.py"), contractSource);
+
+  return dir;
+}
+
+function makeMockGit(contractSource) {
+  return (args) => {
+    if (args && args[0] === "status") return "";
+    return contractSource;
+  };
+}
+
+function makeFullV2MockSchema() {
+  const methods = {};
+  for (const m of REQUIRED_V2_METHODS) {
+    methods[m] = {};
+  }
+  return { methods };
+}
+
+test("Recovery: requires both confirm-address and confirm-contract-address", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    await assert.rejects(
+      async () => executeRecovery({ confirmAddress: null, confirmContractAddress: "0x1111111111111111111111111111111111111111", rootPath: mockDir }),
+      /--confirm-address 0x<address> must be specified/
+    );
+    await assert.rejects(
+      async () => executeRecovery({ confirmAddress: "0x1111111111111111111111111111111111111111", confirmContractAddress: null, rootPath: mockDir }),
+      /--confirm-contract-address 0x<address> must be specified/
+    );
+    await assert.rejects(
+      async () => executeRecovery({ confirmAddress: "0xbad", confirmContractAddress: "0x1111111111111111111111111111111111111111", rootPath: mockDir }),
+      /Invalid confirmation deployer address/
+    );
+    await assert.rejects(
+      async () => executeRecovery({ confirmAddress: "0x1111111111111111111111111111111111111111", confirmContractAddress: "0xbad", rootPath: mockDir }),
+      /Invalid confirmation contract address/
+    );
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: contract address mismatch rejected BEFORE any local writes", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const actualContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+    const wrongContract = "0x1111111111111111111111111111111111111111";
+
+    const pendingPath = resolve(mockDir, "deployments", "makewhole-v2.pending.json");
+    const receiptPath = resolve(mockDir, "deployments", "makewhole-v2.json");
+    const envPath = resolve(mockDir, "web", ".env.local");
+
+    writeFileSync(
+      pendingPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        status: "BROADCAST",
+        deploymentTxHash: testTxHash,
+        createdAtUtc: "2026-10-17T17:30:12.025Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+      })
+    );
+    writeFileSync(envPath, "NEXT_PUBLIC_CONTRACT_ADDRESS=0xold\n");
+
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: actualContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          type: 1,
+          data: { contract_address: actualContract },
+        };
+      },
+    };
+
+    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: testDeployer,
+          confirmContractAddress: wrongContract,
+          rootPath: mockDir,
+          client: mockClient,
+          execGitFn: makeMockGit(contractSource),
+        }),
+      /does not match confirmed contract address/
+    );
+
+    // Assert: NO final receipt was written
+    assert.strictEqual(existsSync(receiptPath), false);
+    // Assert: env was NOT modified
+    assert.strictEqual(readFileSync(envPath, "utf8"), "NEXT_PUBLIC_CONTRACT_ADDRESS=0xold\n");
+    // Assert: pending journal was PRESERVED
+    assert.strictEqual(existsSync(pendingPath), true);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: reads only the recorded transaction hash and never calls signing/deployment methods", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    writeFileSync(
+      resolve(mockDir, "deployments", "makewhole-v2.pending.json"),
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        status: "BROADCAST",
+        deploymentTxHash: testTxHash,
+        createdAtUtc: "2026-10-17T17:30:12.025Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+      })
+    );
+    writeFileSync(resolve(mockDir, "web", ".env.local"), "NEXT_PUBLIC_CONTRACT_ADDRESS=0xold\n");
+
+    let waitedHash = null;
+    let deployContractCalled = false;
+    let sendTransactionCalled = false;
+
+    const mockClient = {
+      async waitForTransactionReceipt({ hash }) {
+        waitedHash = hash;
+        return {
+          status_name: "FINALIZED",
+          tx_execution_result_name: "FINISHED_WITH_RETURN",
+          recipient: testContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          tx_data_decoded: {
+            type: "deploy",
+            contract_address: testContract,
+          },
+        };
+      },
+      async getContractSchema() {
+        return makeFullV2MockSchema();
+      },
+      async readContract({ functionName }) {
+        if (functionName === "list_ids") return [];
+        if (functionName === "get_economics") {
+          return { pool: 0, locked_bonds: 0, locked_jobs: 0, credits: 0, slash_count: 0, settled_ok: 0, settled_rug: 0 };
+        }
+        return null;
+      },
+      async deployContract() {
+        deployContractCalled = true;
+      },
+      async sendTransaction() {
+        sendTransactionCalled = true;
+      },
+    };
+
+    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+
+    const res = await executeRecovery({
+      confirmAddress: testDeployer,
+      confirmContractAddress: testContract,
+      rootPath: mockDir,
+      client: mockClient,
+      execGitFn: makeMockGit(contractSource),
+    });
+
+    assert.strictEqual(res.recovered, true);
+    assert.strictEqual(waitedHash, testTxHash);
+    assert.strictEqual(deployContractCalled, false);
+    assert.strictEqual(sendTransactionCalled, false);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: failed recovery preserves the pending journal and prints DO NOT REDEPLOY", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const pendingPath = resolve(mockDir, "deployments", "makewhole-v2.pending.json");
+    const journalContent = JSON.stringify({
+      project: "makewhole",
+      version: "v2",
+      chainId: 61997,
+      rpcHost: "studio-dev.genlayer.com",
+      deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+      sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+      contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+      status: "BROADCAST",
+      deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+      createdAtUtc: "2026-10-17T17:30:12.025Z",
+      broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+    });
+    writeFileSync(pendingPath, journalContent);
+
+    const mockFailingClient = {
+      async waitForTransactionReceipt() {
+        throw new Error("RPC network timeout");
+      },
+    };
+
+    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+          confirmContractAddress: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+          rootPath: mockDir,
+          client: mockFailingClient,
+          execGitFn: makeMockGit(contractSource),
+        }),
+      /RPC network timeout/
+    );
+
+    assert.strictEqual(existsSync(pendingPath), true);
+    assert.strictEqual(readFileSync(pendingPath, "utf8"), journalContent);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: pending deletion failure fails closed, preserves journal, and reports error", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const pendingPath = resolve(mockDir, "deployments", "makewhole-v2.pending.json");
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    writeFileSync(
+      pendingPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        status: "BROADCAST",
+        deploymentTxHash: testTxHash,
+        createdAtUtc: "2026-10-17T17:30:12.025Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+      })
+    );
+
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: testContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          type: 1,
+          data: { contract_address: testContract },
+        };
+      },
+      async getContractSchema() {
+        return makeFullV2MockSchema();
+      },
+      async readContract({ functionName }) {
+        if (functionName === "list_ids") return [];
+        if (functionName === "get_economics") {
+          return { pool: 0, locked_bonds: 0, locked_jobs: 0, credits: 0, slash_count: 0, settled_ok: 0, settled_rug: 0 };
+        }
+        return null;
+      },
+    };
+
+    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: testDeployer,
+          confirmContractAddress: testContract,
+          rootPath: mockDir,
+          client: mockClient,
+          execGitFn: makeMockGit(contractSource),
+          unlinkFn: () => {
+            throw new Error("EPERM: operation not permitted");
+          },
+        }),
+      (err) => {
+        assert.strictEqual(err.pendingDeletionFailed, true);
+        assert.match(err.message, /failed to delete pending journal/);
+        return true;
+      }
+    );
+
+    assert.strictEqual(existsSync(pendingPath), true);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: successful mocked recovery updates environment and receipt with broadcastAtUtc before deleting pending", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const pendingPath = resolve(mockDir, "deployments", "makewhole-v2.pending.json");
+    const receiptPath = resolve(mockDir, "deployments", "makewhole-v2.json");
+    const envPath = resolve(mockDir, "web", ".env.local");
+
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    writeFileSync(
+      pendingPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        status: "BROADCAST",
+        deploymentTxHash: testTxHash,
+        createdAtUtc: "2026-10-17T17:30:12.025Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+      })
+    );
+    writeFileSync(envPath, "NEXT_PUBLIC_CONTRACT_ADDRESS=0xold\n");
+
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: testContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          data: {
+            contract_address: testContract,
+          },
+          type: 1,
+        };
+      },
+      async getContractSchema() {
+        return makeFullV2MockSchema();
+      },
+      async readContract({ functionName }) {
+        if (functionName === "list_ids") return [];
+        if (functionName === "get_economics") {
+          return { pool: 0, locked_bonds: 0, locked_jobs: 0, credits: 0, slash_count: 0, settled_ok: 0, settled_rug: 0 };
+        }
+        return null;
+      },
+    };
+
+    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+
+    const res = await executeRecovery({
+      confirmAddress: testDeployer,
+      confirmContractAddress: testContract,
+      rootPath: mockDir,
+      client: mockClient,
+      execGitFn: makeMockGit(contractSource),
+    });
+
+    assert.strictEqual(res.recovered, true);
+    assert.strictEqual(res.contractAddress, testContract);
+    assert.strictEqual(res.pendingJournalStatus, "removed");
+
+    assert.strictEqual(existsSync(receiptPath), true);
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    assert.strictEqual(receipt.contractAddress, testContract);
+    assert.strictEqual(receipt.deploymentTxHash, testTxHash);
+    assert.strictEqual(receipt.broadcastAtUtc, "2026-10-17T17:30:14.669Z");
+    assert.strictEqual(typeof receipt.recoveredAtUtc, "string");
+    assert.strictEqual(receipt.deployedAtUtc, undefined); // NOT labeled as deployment time!
+
+    const envContent = readFileSync(envPath, "utf8");
+    assert.match(envContent, new RegExp(`NEXT_PUBLIC_CONTRACT_ADDRESS=${testContract}`));
+
+    assert.strictEqual(existsSync(pendingPath), false);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: idempotent completion after a partial local write verifies on-chain and removes stale journal", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const pendingPath = resolve(mockDir, "deployments", "makewhole-v2.pending.json");
+    const receiptPath = resolve(mockDir, "deployments", "makewhole-v2.json");
+    const envPath = resolve(mockDir, "web", ".env.local");
+
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    writeFileSync(
+      pendingPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        status: "BROADCAST",
+        deploymentTxHash: testTxHash,
+        createdAtUtc: "2026-10-17T17:30:12.025Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+      })
+    );
+
+    writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        networkName: "GenLayer Studio-dev",
+        rpcHost: "studio-dev.genlayer.com",
+        explorerBaseUrl: "https://explorer-studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        contractAddress: testContract,
+        deploymentTxHash: testTxHash,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        executionResult: "FINISHED_WITH_RETURN",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+        recoveredAtUtc: "2026-10-17T18:00:00.000Z",
+        sdkVersion: "2.0.0-rc.1",
+      })
+    );
+
+    writeFileSync(envPath, "NEXT_PUBLIC_CONTRACT_ADDRESS=0xold\n");
+
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: testContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          type: 1,
+          data: { contract_address: testContract },
+        };
+      },
+      async getContractSchema() {
+        return makeFullV2MockSchema();
+      },
+      async readContract({ functionName }) {
+        if (functionName === "list_ids") return [];
+        if (functionName === "get_economics") {
+          return { pool: 0, locked_bonds: 0, locked_jobs: 0, credits: 0, slash_count: 0, settled_ok: 0, settled_rug: 0 };
+        }
+        return null;
+      },
+    };
+
+    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+
+    const res = await executeRecovery({
+      confirmAddress: testDeployer,
+      confirmContractAddress: testContract,
+      rootPath: mockDir,
+      client: mockClient,
+      execGitFn: makeMockGit(contractSource),
+    });
+
+    assert.strictEqual(res.recovered, true);
+    assert.strictEqual(res.idempotent, true);
+    assert.strictEqual(existsSync(pendingPath), false);
+    assert.strictEqual(existsSync(receiptPath), true);
+    const envContent = readFileSync(envPath, "utf8");
+    assert.match(envContent, new RegExp(`NEXT_PUBLIC_CONTRACT_ADDRESS=${testContract}`));
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: receipt-only path cannot self-confirm; requires confirmation flags and verifies on-chain", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const receiptPath = resolve(mockDir, "deployments", "makewhole-v2.json");
+    const envPath = resolve(mockDir, "web", ".env.local");
+
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        networkName: "GenLayer Studio-dev",
+        rpcHost: "studio-dev.genlayer.com",
+        explorerBaseUrl: "https://explorer-studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        contractAddress: testContract,
+        deploymentTxHash: testTxHash,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        executionResult: "FINISHED_WITH_RETURN",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+        recoveredAtUtc: "2026-10-17T18:00:00.000Z",
+        sdkVersion: "2.0.0-rc.1",
+      })
+    );
+    writeFileSync(envPath, "NEXT_PUBLIC_CONTRACT_ADDRESS=0xold\n");
+
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: testContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          type: 1,
+          data: { contract_address: testContract },
+        };
+      },
+      async getContractSchema() {
+        return makeFullV2MockSchema();
+      },
+      async readContract({ functionName }) {
+        if (functionName === "list_ids") return [];
+        if (functionName === "get_economics") {
+          return { pool: 0, locked_bonds: 0, locked_jobs: 0, credits: 0, slash_count: 0, settled_ok: 0, settled_rug: 0 };
+        }
+        return null;
+      },
+    };
+
+    // Mismatched confirm deployer
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: "0x1111111111111111111111111111111111111111",
+          confirmContractAddress: testContract,
+          rootPath: mockDir,
+          client: mockClient,
+        }),
+      /does not match receipt deployer/
+    );
+
+    // Mismatched confirm contract
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: testDeployer,
+          confirmContractAddress: "0x1111111111111111111111111111111111111111",
+          rootPath: mockDir,
+          client: mockClient,
+        }),
+      /does not match receipt contract address/
+    );
+
+    // Valid confirmations succeed and return alreadyCompleted
+    const res = await executeRecovery({
+      confirmAddress: testDeployer,
+      confirmContractAddress: testContract,
+      rootPath: mockDir,
+      client: mockClient,
+    });
+
+    assert.strictEqual(res.recovered, true);
+    assert.strictEqual(res.alreadyCompleted, true);
+    assert.strictEqual(res.pendingJournalStatus, "absent");
+    const envContent = readFileSync(envPath, "utf8");
+    assert.match(envContent, new RegExp(`NEXT_PUBLIC_CONTRACT_ADDRESS=${testContract}`));
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery: local forged receipt rejected by on-chain verification in receipt-only and idempotent paths", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const receiptPath = resolve(mockDir, "deployments", "makewhole-v2.json");
+
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const forgedContract = "0x9999999999999999999999999999999999999999";
+    const realContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    // Forged receipt claiming contract address is 0x9999...
+    writeFileSync(
+      receiptPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        networkName: "GenLayer Studio-dev",
+        rpcHost: "studio-dev.genlayer.com",
+        explorerBaseUrl: "https://explorer-studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        contractAddress: forgedContract,
+        deploymentTxHash: testTxHash,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        executionResult: "FINISHED_WITH_RETURN",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+        recoveredAtUtc: "2026-10-17T18:00:00.000Z",
+        sdkVersion: "2.0.0-rc.1",
+      })
+    );
+
+    // Live RPC actually deployed realContract
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: realContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          type: 1,
+          data: { contract_address: realContract },
+        };
+      },
+    };
+
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: testDeployer,
+          confirmContractAddress: forgedContract,
+          rootPath: mockDir,
+          client: mockClient,
+        }),
+      /does not match receipt/
+    );
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Hermeticity check: no test files or directories created in repository scratch/", () => {
+  const scratchDir = resolve(process.cwd(), "scratch");
+  if (existsSync(scratchDir)) {
+    const entries = readdirSync(scratchDir);
+    for (const e of entries) {
+      assert.strictEqual(
+        baselineScratchEntries.has(e),
+        true,
+        `Found new test artifact created in repository scratch: ${e}`
+      );
+    }
+  }
 });

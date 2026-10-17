@@ -10,6 +10,7 @@ import {
   validateConfirmAddress,
   calculateFundingDeficit,
   assertKeychainAccountCanBeCreated,
+  executeRecovery,
   MAX_TARGET_DEPLOYER_BALANCE_GEN,
   MAX_TARGET_DEPLOYER_BALANCE_WEI,
 } from "./deploy-helpers.mjs";
@@ -87,23 +88,27 @@ function normalizePrivateKey(rawKey) {
  * Parses CLI arguments for deploy-keychain.mjs.
  */
 export function parseKeychainArgs(args = process.argv.slice(2)) {
-  let mode = "preflight";
+  let explicitMode = null;
   let confirmAddress = null;
+  let confirmContractAddress = null;
+
+  const MODE_FLAGS = new Set([
+    "--prepare-account",
+    "--fund",
+    "--deploy",
+    "--recover",
+    "--preflight",
+  ]);
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--prepare-account") {
-      if (mode !== "preflight") throw new Error("Cannot combine mode flags. Specify only one mode.");
-      mode = "prepare-account";
-    } else if (arg === "--fund") {
-      if (mode !== "preflight") throw new Error("Cannot combine mode flags. Specify only one mode.");
-      mode = "fund";
-    } else if (arg === "--deploy") {
-      if (mode !== "preflight") throw new Error("Cannot combine mode flags. Specify only one mode.");
-      mode = "deploy";
-    } else if (arg === "--preflight") {
-      if (mode !== "preflight") throw new Error("Cannot combine mode flags. Specify only one mode.");
-      mode = "preflight";
+    if (MODE_FLAGS.has(arg)) {
+      if (explicitMode !== null) {
+        throw new Error(
+          `Cannot combine mode flags. Mode '${explicitMode}' was already specified when encountering '${arg}'.`
+        );
+      }
+      explicitMode = arg.replace(/^--/, "");
     } else if (arg === "--confirm-address") {
       i++;
       if (i >= args.length || !args[i]) {
@@ -112,12 +117,22 @@ export function parseKeychainArgs(args = process.argv.slice(2)) {
       confirmAddress = args[i];
     } else if (arg.startsWith("--confirm-address=")) {
       confirmAddress = arg.slice("--confirm-address=".length);
+    } else if (arg === "--confirm-contract-address") {
+      i++;
+      if (i >= args.length || !args[i]) {
+        throw new Error("--confirm-contract-address requires an address value.");
+      }
+      confirmContractAddress = args[i];
+    } else if (arg.startsWith("--confirm-contract-address=")) {
+      confirmContractAddress = arg.slice("--confirm-contract-address=".length);
     } else {
       throw new Error(`Unknown argument '${arg}'.`);
     }
   }
 
-  return { mode, confirmAddress };
+  const mode = explicitMode || "preflight";
+
+  return { mode, confirmAddress, confirmContractAddress };
 }
 
 /**
@@ -575,7 +590,31 @@ async function main() {
     process.exit(1);
   }
 
-  const { mode, confirmAddress } = parsed;
+  const { mode, confirmAddress, confirmContractAddress } = parsed;
+
+  if (mode === "recover") {
+    console.log("======================================================================");
+    console.log("MAKEWHOLE v2 KEYCHAIN OPERATOR: RECOVER DEPLOYMENT");
+    console.log("======================================================================");
+    try {
+      const res = await executeRecovery({ confirmAddress, confirmContractAddress });
+      console.log(`\n[SUCCESS] Deployment successfully recovered.`);
+      console.log(`Contract Address : ${res.contractAddress}`);
+      console.log(`Transaction Hash : ${res.deploymentTxHash}`);
+      console.log(`Receipt Artifact : ${res.receiptFile}`);
+      console.log(`Environment      : web/.env.local updated`);
+      console.log(`Pending Journal  : ${res.pendingJournalStatus || "removed"}`);
+    } catch (e) {
+      console.error(`\n[FAILURE] Recovery error: ${e.message}`);
+      if (e.pendingDeletionFailed) {
+        console.error("Receipt and environment were updated locally, but the pending journal could not be deleted.");
+        console.error("The pending journal is preserved for an idempotent recovery rerun.");
+      }
+      console.error("DO NOT REDEPLOY.");
+      process.exit(1);
+    }
+    return;
+  }
 
   let keytar;
   try {

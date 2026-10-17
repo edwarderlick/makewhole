@@ -1,6 +1,19 @@
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { mkdirSync, writeFileSync, renameSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, renameSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { createClient } from "genlayer-js";
+import { studioDevnet } from "genlayer-js/chains";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const root = resolve(__dirname, "..");
+
+export const CANONICAL_CHAIN_ID = 61997;
+export const CANONICAL_RPC = "https://studio-dev.genlayer.com/api";
+export const CANONICAL_EXPLORER = "https://explorer-studio-dev.genlayer.com";
+export const SDK_VERSION = "2.0.0-rc.1";
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 export const ADDR_REGEX = /^0x[0-9a-fA-F]{40}$/;
@@ -14,13 +27,30 @@ export const TARGET_ENV_KEYS = [
 ];
 
 export const REQUIRED_V2_METHODS = [
-  "list_ids",
-  "get_economics",
-  "get_bond",
-  "get_reserved_bond",
-  "get_available_bond",
+  "ack_downstream",
+  "adjudicate",
+  "cancel",
   "check_bond",
+  "create_job",
+  "expire",
+  "fund_pool",
+  "get_available_bond",
+  "get_balances",
+  "get_bond",
+  "get_credit",
+  "get_economics",
+  "get_job",
+  "get_job_ids",
+  "get_pool",
+  "get_rep",
+  "get_reserved_bond",
   "get_settlement",
+  "list_ids",
+  "post_bond",
+  "submit",
+  "submit_hop",
+  "unbond",
+  "withdraw",
 ];
 
 export const TX_HASH_REGEX = /^0x[0-9a-fA-F]{64}$/;
@@ -158,46 +188,262 @@ export function validateFeeQuote(quote) {
 }
 
 /**
- * Strictly validates a finalized transaction receipt from client.waitForTransactionReceipt.
+ * Canonical receipt-normalization layer that supports both camelCase and snake_case representations.
+ * Validates strictly:
+ * - status must be exactly FINALIZED (rejects non-final, numeric, or SUCCESS)
+ * - execution result must be exactly FINISHED_WITH_RETURN
+ * - conflicting aliases fail closed
+ * - decoded type must be exactly 'deploy'
+ * - contract address must be a valid nonzero 20-byte 0x address
+ * - recipient, when provided, must match contract address
  */
-export function validateDeployReceipt(receipt) {
+/**
+ * Canonical receipt-normalization layer that supports both camelCase and snake_case representations.
+ * Validates strictly:
+ * - status must be exactly FINALIZED (rejects non-final, numeric, or SUCCESS)
+ * - execution result must be exactly FINISHED_WITH_RETURN
+ * - conflicting aliases fail closed
+ * - decoded type must be exactly 'deploy' (numeric wire type 1 maps to deploy; other numbers/strings rejected)
+ * - contract address must be a valid nonzero 20-byte 0x address
+ * - all contract address representations must agree (data vs decoded objects)
+ * - recipient, when provided, must match contract address
+ * - receipt hash, when present, must match expectedTxHash
+ * - receipt sender, when present, must match expectedDeployer
+ */
+export function normalizeDeployReceipt(receipt, { expectedTxHash = null, expectedDeployer = null } = {}) {
   if (!receipt || typeof receipt !== "object") {
     throw new Error("Deployment receipt is missing or invalid.");
   }
 
-  if (receipt.statusName !== "FINALIZED") {
+  // 1. Status normalization and conflict detection
+  const hasStatusName = receipt.statusName !== undefined && receipt.statusName !== null;
+  const hasStatus_name = receipt.status_name !== undefined && receipt.status_name !== null;
+
+  if (hasStatusName && hasStatus_name && receipt.statusName !== receipt.status_name) {
     throw new Error(
-      `Transaction status '${receipt.statusName}' is not FINALIZED. ACCEPTED or other non-final statuses are not permitted.`
+      `Conflicting status fields in receipt: statusName '${receipt.statusName}' vs status_name '${receipt.status_name}'.`
     );
   }
 
-  if (receipt.txExecutionResultName !== "FINISHED_WITH_RETURN") {
+  const rawStatus = hasStatusName ? receipt.statusName : hasStatus_name ? receipt.status_name : undefined;
+
+  if (typeof rawStatus !== "string" || rawStatus !== "FINALIZED") {
     throw new Error(
-      `Execution result '${receipt.txExecutionResultName}' is not FINISHED_WITH_RETURN. SUCCESS or other undocumented aliases are not permitted.`
+      `Transaction status '${rawStatus}' is not FINALIZED. ACCEPTED or other non-final statuses are not permitted.`
     );
   }
 
-  if (receipt.txDataDecoded?.type !== "deploy") {
-    throw new Error(`Transaction decoded type '${receipt.txDataDecoded?.type}' is not 'deploy'.`);
+  // 2. Execution result normalization and conflict detection
+  const hasTxExecName = receipt.txExecutionResultName !== undefined && receipt.txExecutionResultName !== null;
+  const hasTxExec_name = receipt.tx_execution_result_name !== undefined && receipt.tx_execution_result_name !== null;
+  const hasExecResult = typeof receipt.executionResult === "string";
+  const hasExec_result = typeof receipt.execution_result === "string";
+
+  const execNames = [];
+  if (hasTxExecName) execNames.push({ key: "txExecutionResultName", val: receipt.txExecutionResultName });
+  if (hasTxExec_name) execNames.push({ key: "tx_execution_result_name", val: receipt.tx_execution_result_name });
+  if (hasExecResult) execNames.push({ key: "executionResult", val: receipt.executionResult });
+  if (hasExec_result) execNames.push({ key: "execution_result", val: receipt.execution_result });
+
+  for (let i = 1; i < execNames.length; i++) {
+    if (execNames[i].val !== execNames[0].val) {
+      throw new Error(
+        `Conflicting execution result fields in receipt: ${execNames[0].key} '${execNames[0].val}' vs ${execNames[i].key} '${execNames[i].val}'.`
+      );
+    }
   }
 
-  const primaryAddress = receipt.txDataDecoded?.contractAddress;
-  if (
-    !primaryAddress ||
-    typeof primaryAddress !== "string" ||
-    !ADDR_REGEX.test(primaryAddress) ||
-    primaryAddress.toLowerCase() === ZERO_ADDRESS
-  ) {
+  const rawExec = execNames.length > 0 ? execNames[0].val : undefined;
+
+  if (typeof rawExec !== "string" || rawExec !== "FINISHED_WITH_RETURN") {
+    throw new Error(
+      `Execution result '${rawExec}' is not FINISHED_WITH_RETURN. SUCCESS or other undocumented aliases are not permitted.`
+    );
+  }
+
+  // 3. Transaction hash verification
+  const hashSources = [];
+  if (receipt.hash) hashSources.push({ key: "hash", val: receipt.hash });
+  if (receipt.transactionHash) hashSources.push({ key: "transactionHash", val: receipt.transactionHash });
+  if (receipt.transaction_hash) hashSources.push({ key: "transaction_hash", val: receipt.transaction_hash });
+
+  if (expectedTxHash && hashSources.length === 0) {
+    throw new Error(`Receipt missing required transaction hash (expected '${expectedTxHash}').`);
+  }
+
+  for (let i = 1; i < hashSources.length; i++) {
+    if (hashSources[i].val.toLowerCase() !== hashSources[0].val.toLowerCase()) {
+      throw new Error(
+        `Conflicting transaction hash fields in receipt: ${hashSources[0].key} '${hashSources[0].val}' vs ${hashSources[i].key} '${hashSources[i].val}'.`
+      );
+    }
+  }
+
+  const resolvedTxHash = hashSources.length > 0 ? hashSources[0].val : null;
+  if (resolvedTxHash) {
+    if (!TX_HASH_REGEX.test(resolvedTxHash)) {
+      throw new Error(`Receipt transaction hash '${resolvedTxHash}' is not a valid 32-byte hex string.`);
+    }
+    if (expectedTxHash && resolvedTxHash.toLowerCase() !== expectedTxHash.toLowerCase()) {
+      throw new Error(
+        `Receipt transaction hash '${resolvedTxHash}' does not match expected '${expectedTxHash}'.`
+      );
+    }
+  }
+
+  // 4. Sender / from address verification
+  const senderSources = [];
+  if (receipt.sender) senderSources.push({ key: "sender", val: receipt.sender });
+  if (receipt.from) senderSources.push({ key: "from", val: receipt.from });
+  if (receipt.from_address) senderSources.push({ key: "from_address", val: receipt.from_address });
+
+  if (expectedDeployer && senderSources.length === 0) {
+    throw new Error(`Receipt missing required sender (expected deployer '${expectedDeployer}').`);
+  }
+
+  for (let i = 1; i < senderSources.length; i++) {
+    if (senderSources[i].val.toLowerCase() !== senderSources[0].val.toLowerCase()) {
+      throw new Error(
+        `Conflicting sender fields in receipt: ${senderSources[0].key} '${senderSources[0].val}' vs ${senderSources[i].key} '${senderSources[i].val}'.`
+      );
+    }
+  }
+
+  const resolvedSender = senderSources.length > 0 ? senderSources[0].val : null;
+  if (resolvedSender) {
+    if (!ADDR_REGEX.test(resolvedSender) || resolvedSender.toLowerCase() === ZERO_ADDRESS) {
+      throw new Error(`Receipt sender '${resolvedSender}' is not a valid nonzero 20-byte address.`);
+    }
+    if (expectedDeployer && resolvedSender.toLowerCase() !== expectedDeployer.toLowerCase()) {
+      throw new Error(
+        `Receipt sender '${resolvedSender}' does not match expected deployer '${expectedDeployer}'.`
+      );
+    }
+  }
+
+  // 5. Type normalization: wire type 1 maps to deploy, string 'deploy' maps to deploy.
+  // Reject any other numbers/strings.
+  if (receipt.type !== undefined) {
+    if (typeof receipt.type === "number") {
+      if (receipt.type !== 1) {
+        throw new Error(`Transaction type '${receipt.type}' is not deploy (only wire type 1 or 'deploy' is permitted).`);
+      }
+    } else if (typeof receipt.type === "string") {
+      if (receipt.type !== "deploy") {
+        throw new Error(`Transaction type '${receipt.type}' is not deploy.`);
+      }
+    } else {
+      throw new Error("Invalid top-level type in receipt.");
+    }
+  }
+
+  // Check nested types in txDataDecoded, tx_data_decoded, data
+  const checkNestedType = (obj, name) => {
+    if (!obj || typeof obj !== "object") return;
+    if (obj.type !== undefined) {
+      if (typeof obj.type === "number") {
+        if (obj.type !== 1) {
+          throw new Error(`${name} type '${obj.type}' is not deploy (Transaction decoded type '${obj.type}' is not 'deploy').`);
+        }
+      } else if (typeof obj.type === "string") {
+        if (obj.type !== "deploy") {
+          throw new Error(`${name} type '${obj.type}' is not deploy (Transaction decoded type '${obj.type}' is not 'deploy').`);
+        }
+      } else {
+        throw new Error(`Invalid type in ${name}.`);
+      }
+    }
+  };
+
+  checkNestedType(receipt.txDataDecoded, "txDataDecoded");
+  checkNestedType(receipt.tx_data_decoded, "tx_data_decoded");
+  checkNestedType(receipt.data, "data");
+
+  // Require at least one representation indicating deploy
+  const hasTypeIndicator =
+    receipt.type === 1 ||
+    receipt.type === "deploy" ||
+    receipt.txDataDecoded?.type === "deploy" ||
+    receipt.txDataDecoded?.type === 1 ||
+    receipt.tx_data_decoded?.type === "deploy" ||
+    receipt.tx_data_decoded?.type === 1 ||
+    receipt.data?.type === "deploy" ||
+    receipt.data?.type === 1;
+
+  if (!hasTypeIndicator) {
+    throw new Error("Transaction decoded type 'undefined' is not 'deploy'. Receipt missing valid deploy type indication.");
+  }
+
+  // 6. Collect and cross-validate all contract address representations
+  const addrSources = [];
+  if (receipt.contractAddress) addrSources.push({ key: "receipt.contractAddress", val: receipt.contractAddress });
+  if (receipt.contract_address) addrSources.push({ key: "receipt.contract_address", val: receipt.contract_address });
+  if (receipt.txDataDecoded?.contractAddress) {
+    addrSources.push({ key: "txDataDecoded.contractAddress", val: receipt.txDataDecoded.contractAddress });
+  }
+  if (receipt.txDataDecoded?.contract_address) {
+    addrSources.push({ key: "txDataDecoded.contract_address", val: receipt.txDataDecoded.contract_address });
+  }
+  if (receipt.tx_data_decoded?.contractAddress) {
+    addrSources.push({ key: "tx_data_decoded.contractAddress", val: receipt.tx_data_decoded.contractAddress });
+  }
+  if (receipt.tx_data_decoded?.contract_address) {
+    addrSources.push({ key: "tx_data_decoded.contract_address", val: receipt.tx_data_decoded.contract_address });
+  }
+  if (receipt.data?.contractAddress) {
+    addrSources.push({ key: "data.contractAddress", val: receipt.data.contractAddress });
+  }
+  if (receipt.data?.contract_address) {
+    addrSources.push({ key: "data.contract_address", val: receipt.data.contract_address });
+  }
+
+  if (addrSources.length === 0) {
+    throw new Error("Deployment receipt is missing contract address across all representations.");
+  }
+
+  for (let i = 1; i < addrSources.length; i++) {
+    if (addrSources[i].val.toLowerCase() !== addrSources[0].val.toLowerCase()) {
+      throw new Error(
+        `Conflicting contract address representations in receipt: ${addrSources[0].key} '${addrSources[0].val}' vs ${addrSources[i].key} '${addrSources[i].val}'.`
+      );
+    }
+  }
+
+  const primaryAddress = addrSources[0].val;
+  if (!ADDR_REGEX.test(primaryAddress) || primaryAddress.toLowerCase() === ZERO_ADDRESS) {
     throw new Error(`Decoded contractAddress '${primaryAddress}' is not a valid nonzero 20-byte 0x address.`);
   }
 
+  // 7. Recipient verification when present
   if (receipt.recipient) {
-    if (typeof receipt.recipient !== "string" || receipt.recipient.toLowerCase() !== primaryAddress.toLowerCase()) {
+    if (!ADDR_REGEX.test(receipt.recipient) || receipt.recipient.toLowerCase() === ZERO_ADDRESS) {
+      throw new Error(`Recipient '${receipt.recipient}' is not a valid nonzero 20-byte address.`);
+    }
+    if (receipt.recipient.toLowerCase() !== primaryAddress.toLowerCase()) {
       throw new Error(`Recipient '${receipt.recipient}' does not match decoded contractAddress '${primaryAddress}'.`);
     }
   }
 
-  return primaryAddress;
+  return {
+    statusName: "FINALIZED",
+    txExecutionResultName: "FINISHED_WITH_RETURN",
+    txDataDecoded: {
+      type: "deploy",
+      contractAddress: primaryAddress,
+    },
+    contractAddress: primaryAddress,
+    recipient: receipt.recipient || primaryAddress,
+    sender: resolvedSender,
+    hash: resolvedTxHash,
+  };
+}
+
+/**
+ * Strictly validates a finalized transaction receipt and returns the contract address.
+ */
+export function validateDeployReceipt(receipt, options = {}) {
+  const normalized = normalizeDeployReceipt(receipt, options);
+  return normalized.contractAddress;
 }
 
 /**
@@ -554,4 +800,765 @@ export function assertKeychainAccountCanBeCreated(existingPassword) {
     throw new Error("Keychain account already exists. Refusing to overwrite existing account.");
   }
   return true;
+}
+
+/**
+ * Validates a pending deployment journal strictly.
+ * Fails closed on any missing, malformed, or invalid fields.
+ */
+export function validatePendingJournal(journal) {
+  if (!journal || typeof journal !== "object") {
+    throw new Error("Pending deployment journal is missing or not an object.");
+  }
+  const ALLOWED_JOURNAL_KEYS = new Set([
+    "project",
+    "version",
+    "chainId",
+    "rpcHost",
+    "deployerAddress",
+    "sourceCommit",
+    "contractSourceSha256",
+    "createdAtUtc",
+    "status",
+    "deploymentTxHash",
+    "broadcastAtUtc",
+  ]);
+  for (const k of Object.keys(journal)) {
+    if (!ALLOWED_JOURNAL_KEYS.has(k)) {
+      throw new Error(`Unexpected field in pending deployment journal: '${k}'.`);
+    }
+  }
+
+  if (journal.project !== "makewhole") {
+    throw new Error(`Invalid journal project '${journal.project}', expected 'makewhole'.`);
+  }
+  if (journal.version !== "v2") {
+    throw new Error(`Invalid journal version '${journal.version}', expected 'v2'.`);
+  }
+  if (journal.status !== "BROADCAST") {
+    throw new Error(`Invalid journal status '${journal.status}', expected 'BROADCAST'.`);
+  }
+  const chainId = typeof journal.chainId === "bigint" ? Number(journal.chainId) : journal.chainId;
+  if (chainId !== CANONICAL_CHAIN_ID) {
+    throw new Error(`Invalid journal chainId ${journal.chainId}, expected ${CANONICAL_CHAIN_ID}.`);
+  }
+  if (journal.rpcHost !== "studio-dev.genlayer.com") {
+    throw new Error(`Invalid journal rpcHost '${journal.rpcHost}', expected exact 'studio-dev.genlayer.com'.`);
+  }
+  if (!journal.deployerAddress || !ADDR_REGEX.test(journal.deployerAddress) || journal.deployerAddress.toLowerCase() === ZERO_ADDRESS) {
+    throw new Error(`Invalid journal deployerAddress '${journal.deployerAddress}'.`);
+  }
+  if (!journal.deploymentTxHash || !TX_HASH_REGEX.test(journal.deploymentTxHash)) {
+    throw new Error(`Invalid journal deploymentTxHash '${journal.deploymentTxHash}'. Must be a 32-byte hex hash.`);
+  }
+  if (!journal.sourceCommit || typeof journal.sourceCommit !== "string" || !/^[0-9a-fA-F]{40}$/.test(journal.sourceCommit)) {
+    throw new Error(`Invalid journal sourceCommit '${journal.sourceCommit}'.`);
+  }
+  if (
+    !journal.contractSourceSha256 ||
+    typeof journal.contractSourceSha256 !== "string" ||
+    !/^[0-9a-fA-F]{64}$/.test(journal.contractSourceSha256)
+  ) {
+    throw new Error(`Invalid journal contractSourceSha256 '${journal.contractSourceSha256}'.`);
+  }
+  if (
+    !journal.createdAtUtc ||
+    typeof journal.createdAtUtc !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(journal.createdAtUtc) ||
+    isNaN(Date.parse(journal.createdAtUtc))
+  ) {
+    throw new Error(`Invalid journal createdAtUtc '${journal.createdAtUtc}'. Must be a valid ISO-8601 UTC timestamp.`);
+  }
+  if (
+    !journal.broadcastAtUtc ||
+    typeof journal.broadcastAtUtc !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(journal.broadcastAtUtc) ||
+    isNaN(Date.parse(journal.broadcastAtUtc))
+  ) {
+    throw new Error(`Invalid journal broadcastAtUtc '${journal.broadcastAtUtc}'. Must be a valid ISO-8601 UTC timestamp.`);
+  }
+  const createdMs = Date.parse(journal.createdAtUtc);
+  const broadcastMs = Date.parse(journal.broadcastAtUtc);
+  if (broadcastMs < createdMs) {
+    throw new Error(
+      `Invalid journal timestamps: broadcastAtUtc '${journal.broadcastAtUtc}' cannot be earlier than createdAtUtc '${journal.createdAtUtc}'.`
+    );
+  }
+  return true;
+}
+
+/**
+ * Validates a final receipt artifact strictly.
+ */
+export function validateReceiptArtifact(receipt) {
+  if (!receipt || typeof receipt !== "object") {
+    throw new Error("Receipt artifact is missing or not an object.");
+  }
+  const ALLOWED_RECEIPT_KEYS = new Set([
+    "project",
+    "version",
+    "chainId",
+    "networkName",
+    "rpcHost",
+    "explorerBaseUrl",
+    "deployerAddress",
+    "contractAddress",
+    "deploymentTxHash",
+    "sourceCommit",
+    "contractSourceSha256",
+    "executionResult",
+    "broadcastAtUtc",
+    "recoveredAtUtc",
+    "finalizedAtUtc",
+    "sdkVersion",
+  ]);
+  for (const k of Object.keys(receipt)) {
+    if (!ALLOWED_RECEIPT_KEYS.has(k)) {
+      throw new Error(`Unexpected field in receipt artifact: '${k}'.`);
+    }
+  }
+
+  if (receipt.project !== "makewhole") {
+    throw new Error(`Invalid receipt project '${receipt.project}', expected 'makewhole'.`);
+  }
+  if (receipt.version !== "v2") {
+    throw new Error(`Invalid receipt version '${receipt.version}', expected 'v2'.`);
+  }
+  const chainId = typeof receipt.chainId === "bigint" ? Number(receipt.chainId) : receipt.chainId;
+  if (chainId !== CANONICAL_CHAIN_ID) {
+    throw new Error(`Invalid receipt chainId ${receipt.chainId}, expected ${CANONICAL_CHAIN_ID}.`);
+  }
+  if (receipt.networkName !== "GenLayer Studio-dev") {
+    throw new Error(`Invalid receipt networkName '${receipt.networkName}', expected 'GenLayer Studio-dev'.`);
+  }
+  if (receipt.rpcHost !== "studio-dev.genlayer.com") {
+    throw new Error(`Invalid receipt rpcHost '${receipt.rpcHost}', expected exact 'studio-dev.genlayer.com'.`);
+  }
+  if (receipt.explorerBaseUrl !== CANONICAL_EXPLORER) {
+    throw new Error(`Invalid receipt explorerBaseUrl '${receipt.explorerBaseUrl}', expected '${CANONICAL_EXPLORER}'.`);
+  }
+  if (!receipt.deployerAddress || !ADDR_REGEX.test(receipt.deployerAddress) || receipt.deployerAddress.toLowerCase() === ZERO_ADDRESS) {
+    throw new Error(`Invalid receipt deployerAddress '${receipt.deployerAddress}'.`);
+  }
+  if (!receipt.contractAddress || !ADDR_REGEX.test(receipt.contractAddress) || receipt.contractAddress.toLowerCase() === ZERO_ADDRESS) {
+    throw new Error(`Invalid receipt contractAddress '${receipt.contractAddress}'.`);
+  }
+  if (!receipt.deploymentTxHash || !TX_HASH_REGEX.test(receipt.deploymentTxHash)) {
+    throw new Error(`Invalid receipt deploymentTxHash '${receipt.deploymentTxHash}'.`);
+  }
+  if (!receipt.sourceCommit || typeof receipt.sourceCommit !== "string" || !/^[0-9a-fA-F]{40}$/.test(receipt.sourceCommit)) {
+    throw new Error(`Invalid receipt sourceCommit '${receipt.sourceCommit}'.`);
+  }
+  if (!receipt.contractSourceSha256 || typeof receipt.contractSourceSha256 !== "string" || !/^[0-9a-fA-F]{64}$/.test(receipt.contractSourceSha256)) {
+    throw new Error(`Invalid receipt contractSourceSha256 '${receipt.contractSourceSha256}'.`);
+  }
+  if (receipt.executionResult !== "FINISHED_WITH_RETURN") {
+    throw new Error(`Invalid receipt executionResult '${receipt.executionResult}', expected 'FINISHED_WITH_RETURN'.`);
+  }
+  if (
+    !receipt.broadcastAtUtc ||
+    typeof receipt.broadcastAtUtc !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(receipt.broadcastAtUtc) ||
+    isNaN(Date.parse(receipt.broadcastAtUtc))
+  ) {
+    throw new Error(`Invalid receipt broadcastAtUtc '${receipt.broadcastAtUtc}'. Must be a valid ISO-8601 UTC timestamp.`);
+  }
+  if (
+    !receipt.recoveredAtUtc ||
+    typeof receipt.recoveredAtUtc !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(receipt.recoveredAtUtc) ||
+    isNaN(Date.parse(receipt.recoveredAtUtc))
+  ) {
+    throw new Error(`Invalid receipt recoveredAtUtc '${receipt.recoveredAtUtc}'. Must be a valid ISO-8601 UTC timestamp.`);
+  }
+  if (!receipt.sdkVersion || typeof receipt.sdkVersion !== "string" || receipt.sdkVersion.trim().length === 0) {
+    throw new Error(`Invalid receipt sdkVersion '${receipt.sdkVersion}'. Must be a non-empty string.`);
+  }
+  if (receipt.finalizedAtUtc !== undefined) {
+    if (
+      typeof receipt.finalizedAtUtc !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(receipt.finalizedAtUtc) ||
+      isNaN(Date.parse(receipt.finalizedAtUtc))
+    ) {
+      throw new Error(`Invalid receipt finalizedAtUtc '${receipt.finalizedAtUtc}'. Must be a valid ISO-8601 UTC timestamp.`);
+    }
+  }
+  return true;
+}
+
+/**
+ * Validates that an existing final receipt artifact matches the pending journal for idempotent recovery.
+ */
+export function validateReceiptMatchesJournal({ receipt, journal, confirmContractAddress = null }) {
+  validateReceiptArtifact(receipt);
+  validatePendingJournal(journal);
+
+  if (receipt.project !== journal.project) {
+    throw new Error(`Project mismatch: receipt has '${receipt.project}', journal has '${journal.project}'.`);
+  }
+  if (receipt.version !== journal.version) {
+    throw new Error(`Version mismatch: receipt has '${receipt.version}', journal has '${journal.version}'.`);
+  }
+  const rChain = typeof receipt.chainId === "bigint" ? Number(receipt.chainId) : receipt.chainId;
+  const jChain = typeof journal.chainId === "bigint" ? Number(journal.chainId) : journal.chainId;
+  if (rChain !== jChain) {
+    throw new Error(`Chain ID mismatch: receipt has ${receipt.chainId}, journal has ${journal.chainId}.`);
+  }
+  if (receipt.rpcHost !== journal.rpcHost) {
+    throw new Error(`RPC host mismatch: receipt has '${receipt.rpcHost}', journal has '${journal.rpcHost}'.`);
+  }
+  if (receipt.deployerAddress.toLowerCase() !== journal.deployerAddress.toLowerCase()) {
+    throw new Error(`Deployer address mismatch: receipt has '${receipt.deployerAddress}', journal has '${journal.deployerAddress}'.`);
+  }
+  if (receipt.deploymentTxHash.toLowerCase() !== journal.deploymentTxHash.toLowerCase()) {
+    throw new Error(`Transaction hash mismatch: receipt has '${receipt.deploymentTxHash}', journal has '${journal.deploymentTxHash}'.`);
+  }
+  if (receipt.sourceCommit.toLowerCase() !== journal.sourceCommit.toLowerCase()) {
+    throw new Error(`Source commit mismatch: receipt has '${receipt.sourceCommit}', journal has '${journal.sourceCommit}'.`);
+  }
+  if (receipt.contractSourceSha256.toLowerCase() !== journal.contractSourceSha256.toLowerCase()) {
+    throw new Error(`Contract hash mismatch: receipt has '${receipt.contractSourceSha256}', journal has '${journal.contractSourceSha256}'.`);
+  }
+  if (receipt.executionResult !== "FINISHED_WITH_RETURN") {
+    throw new Error(`Execution result mismatch: receipt has '${receipt.executionResult}', expected 'FINISHED_WITH_RETURN'.`);
+  }
+  if (receipt.broadcastAtUtc !== journal.broadcastAtUtc) {
+    throw new Error(`Broadcast timestamp mismatch: receipt has '${receipt.broadcastAtUtc}', journal has '${journal.broadcastAtUtc}'.`);
+  }
+  const broadcastMs = Date.parse(receipt.broadcastAtUtc);
+  const recoveredMs = Date.parse(receipt.recoveredAtUtc);
+  if (recoveredMs < broadcastMs) {
+    throw new Error(`Receipt recoveredAtUtc '${receipt.recoveredAtUtc}' cannot be earlier than broadcastAtUtc '${receipt.broadcastAtUtc}'.`);
+  }
+  if (confirmContractAddress) {
+    if (receipt.contractAddress.toLowerCase() !== confirmContractAddress.toLowerCase()) {
+      throw new Error(`Confirmed contract address '${confirmContractAddress}' does not match receipt '${receipt.contractAddress}'.`);
+    }
+  }
+  return true;
+}
+
+export function normalizeSource(c) {
+  return (c || "").replace(/\r\n/g, "\n");
+}
+
+export function sha256Hex(content) {
+  return createHash("sha256").update(normalizeSource(content)).digest("hex");
+}
+
+/**
+ * Validates that the journal's source commit exists, is an ancestor of current HEAD,
+ * that historical, HEAD, and working contract source hashes match the journal,
+ * and that recovery-critical tracked files are clean.
+ */
+export function validateRecoverySourceIntegrity({
+  rootPath = root,
+  journal,
+  execGitFn = null,
+  criticalFiles = CRITICAL_RELEASE_FILES,
+}) {
+  const runGit = execGitFn || ((args, cwd) => execFileSync("git", args, { cwd: cwd || rootPath, encoding: "utf8" }));
+
+  // 1. Require journal source commit to exist in git history
+  try {
+    runGit(["rev-parse", "--verify", `${journal.sourceCommit}^{commit}`], rootPath);
+  } catch (e) {
+    throw new Error(`Journal source commit '${journal.sourceCommit}' does not exist in git history.`);
+  }
+
+  // 2. Require journal source commit to be an ancestor of current HEAD
+  try {
+    runGit(["merge-base", "--is-ancestor", journal.sourceCommit, "HEAD"], rootPath);
+  } catch (e) {
+    throw new Error(
+      `Journal source commit '${journal.sourceCommit}' is not an ancestor of current HEAD.`
+    );
+  }
+
+  // 3. git show <journalCommit>:contracts/makewhole.py
+  let historicalCode;
+  try {
+    historicalCode = runGit(["show", `${journal.sourceCommit}:contracts/makewhole.py`], rootPath);
+  } catch (e) {
+    throw new Error(
+      `Failed to retrieve contract source from journal commit '${journal.sourceCommit}': ${e.message}`
+    );
+  }
+
+  // 4. Hash historical contract source and require it to match the journal
+  const histSha = sha256Hex(normalizeSource(historicalCode));
+  if (histSha.toLowerCase() !== journal.contractSourceSha256.toLowerCase()) {
+    throw new Error(
+      `Historical contract source at '${journal.sourceCommit}' SHA-256 '${histSha}' does not match journal '${journal.contractSourceSha256}'.`
+    );
+  }
+
+  // 5. Require contract source at current HEAD to have the same hash
+  let headCode;
+  try {
+    headCode = runGit(["show", "HEAD:contracts/makewhole.py"], rootPath);
+  } catch (e) {
+    throw new Error(`Failed to retrieve contract source at HEAD: ${e.message}`);
+  }
+  const headSha = sha256Hex(normalizeSource(headCode));
+  if (headSha.toLowerCase() !== journal.contractSourceSha256.toLowerCase()) {
+    throw new Error(
+      `Current HEAD contract source SHA-256 '${headSha}' does not match journal '${journal.contractSourceSha256}'.`
+    );
+  }
+
+  // 6. Require working contract source to have the same hash
+  const workingPath = resolve(rootPath, "contracts", "makewhole.py");
+  if (!existsSync(workingPath)) {
+    throw new Error(`Working contract source file not found at '${workingPath}'.`);
+  }
+  const workingCode = readFileSync(workingPath, "utf8");
+  const workingSha = sha256Hex(normalizeSource(workingCode));
+  if (workingSha.toLowerCase() !== journal.contractSourceSha256.toLowerCase()) {
+    throw new Error(
+      `Working contract source SHA-256 '${workingSha}' does not match journal '${journal.contractSourceSha256}'.`
+    );
+  }
+
+  // 7. Require current recovery-critical tracked files to be clean when real recovery runs
+  let porcelain = "";
+  try {
+    porcelain = runGit(["status", "--porcelain", "--", ...criticalFiles], rootPath).trim();
+  } catch (e) {
+    throw new Error(`Failed to check git status on critical files: ${e.message}`);
+  }
+  if (porcelain) {
+    throw new Error(
+      `Recovery requires critical tracked files to be clean. Uncommitted changes detected:\n${porcelain}`
+    );
+  }
+
+  return {
+    journalCommit: journal.sourceCommit,
+    historicalSha: histSha,
+    headSha,
+    workingSha,
+    passed: true,
+  };
+}
+
+/**
+ * Queries on-chain contract state and validates fresh schema, 0 jobs, and zeroed economics.
+ */
+export async function verifyDeployedContract(client, address) {
+  const schema = await client.getContractSchema(address);
+  const ids = await client.readContract({
+    address,
+    functionName: "list_ids",
+    args: [],
+  });
+  const economics = await client.readContract({
+    address,
+    functionName: "get_economics",
+    args: [],
+  });
+  validateFreshContractState({ schema, ids, economics });
+  return true;
+}
+
+/**
+ * Gathers git status and committed source gate information.
+ */
+export function getGitReleaseStatus(rootPath = root) {
+  let headCommit = null;
+  try {
+    headCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: rootPath, encoding: "utf8" }).trim();
+  } catch {
+    headCommit = null;
+  }
+
+  let committedCode = null;
+  try {
+    committedCode = execFileSync("git", ["show", "HEAD:contracts/makewhole.py"], { cwd: rootPath, encoding: "utf8" });
+  } catch {
+    committedCode = null;
+  }
+
+  let porcelainStatus = "";
+  try {
+    porcelainStatus = execFileSync("git", ["status", "--porcelain", "--", ...CRITICAL_RELEASE_FILES], {
+      cwd: rootPath,
+      encoding: "utf8",
+    });
+  } catch {
+    porcelainStatus = "ERROR: Failed to run git status";
+  }
+
+  const workingPath = resolve(rootPath, "contracts", "makewhole.py");
+  let workingCode = "";
+  try {
+    if (existsSync(workingPath)) {
+      workingCode = readFileSync(workingPath, "utf8");
+    }
+  } catch {}
+
+  const gate = checkReleaseSourceGate({
+    headCommit,
+    committedCode,
+    workingCode,
+    porcelainStatus,
+  });
+
+  return {
+    headCommit: headCommit || "UNAVAILABLE",
+    committedCode,
+    workingCode,
+    porcelainStatus,
+    workingSha: gate.workingSha,
+    committedSha: gate.committedSha,
+    passed: gate.passed,
+    issues: gate.issues,
+  };
+}
+
+/**
+ * Explicit recovery/resume mode for an already-broadcast pending deployment.
+ * Never signs or broadcasts any transaction. Read-only against RPC.
+ * Idempotent, crash-safe, and preserves pending journal on any error.
+ */
+export async function executeRecovery({
+  confirmAddress,
+  confirmContractAddress,
+  rootPath = root,
+  client = null,
+  execGitFn = null,
+  sdkVersion = SDK_VERSION,
+  unlinkFn = unlinkSync,
+}) {
+  if (!confirmAddress) {
+    throw new Error("Missing required flag: --confirm-address 0x<address> must be specified.");
+  }
+  if (!confirmContractAddress) {
+    throw new Error("Missing required flag: --confirm-contract-address 0x<address> must be specified.");
+  }
+  if (!ADDR_REGEX.test(confirmAddress) || confirmAddress.toLowerCase() === ZERO_ADDRESS) {
+    throw new Error(`Invalid confirmation deployer address '${confirmAddress}'.`);
+  }
+  if (!ADDR_REGEX.test(confirmContractAddress) || confirmContractAddress.toLowerCase() === ZERO_ADDRESS) {
+    throw new Error(`Invalid confirmation contract address '${confirmContractAddress}'.`);
+  }
+
+  const deploymentsDir = resolve(rootPath, "deployments");
+  const pendingFile = resolve(deploymentsDir, "makewhole-v2.pending.json");
+  const receiptFile = resolve(deploymentsDir, "makewhole-v2.json");
+  const envLocal = resolve(rootPath, "web", ".env.local");
+
+  // Path A: Pending journal does NOT exist
+  if (!existsSync(pendingFile)) {
+    if (existsSync(receiptFile)) {
+      let existingReceipt;
+      try {
+        existingReceipt = JSON.parse(readFileSync(receiptFile, "utf8"));
+      } catch (e) {
+        throw new Error(`Receipt file at '${receiptFile}' is malformed JSON: ${e.message}`);
+      }
+      validateReceiptArtifact(existingReceipt);
+
+      if (confirmAddress.toLowerCase() !== existingReceipt.deployerAddress.toLowerCase()) {
+        throw new Error(
+          `Confirmation address '${confirmAddress}' does not match receipt deployer '${existingReceipt.deployerAddress}'.`
+        );
+      }
+      if (confirmContractAddress.toLowerCase() !== existingReceipt.contractAddress.toLowerCase()) {
+        throw new Error(
+          `Confirmed contract address '${confirmContractAddress}' does not match receipt contract address '${existingReceipt.contractAddress}'.`
+        );
+      }
+
+      // Verify on-chain (read-only)
+      const genClient = client || createClient({
+        chain: studioDevnet,
+        endpoint: CANONICAL_RPC,
+      });
+
+      const onChainReceipt = await genClient.waitForTransactionReceipt({
+        hash: existingReceipt.deploymentTxHash,
+        waitUntil: "finalized",
+        retries: 60,
+      });
+      const validatedOnChainAddr = validateDeployReceipt(onChainReceipt, {
+        expectedTxHash: existingReceipt.deploymentTxHash,
+        expectedDeployer: existingReceipt.deployerAddress,
+      });
+      if (validatedOnChainAddr.toLowerCase() !== existingReceipt.contractAddress.toLowerCase()) {
+        throw new Error(
+          `On-chain contract address '${validatedOnChainAddr}' does not match receipt '${existingReceipt.contractAddress}'.`
+        );
+      }
+
+      await verifyDeployedContract(genClient, existingReceipt.contractAddress);
+
+      // Verify environment synchronization
+      const existingEnv = existsSync(envLocal) ? readFileSync(envLocal, "utf8") : "";
+      const updatedEnv = updateEnvContent(existingEnv, {
+        NEXT_PUBLIC_CONTRACT_ADDRESS: existingReceipt.contractAddress,
+        NEXT_PUBLIC_CHAIN_ID: existingReceipt.chainId.toString(),
+        NEXT_PUBLIC_STUDIO_RPC: CANONICAL_RPC,
+        NEXT_PUBLIC_STUDIO_EXPLORER: CANONICAL_EXPLORER,
+        GENLAYER_STUDIO_URL: CANONICAL_RPC,
+      });
+      if (existingEnv !== updatedEnv) {
+        atomicWriteFile(envLocal, updatedEnv);
+      }
+
+      return {
+        recovered: true,
+        alreadyCompleted: true,
+        contractAddress: existingReceipt.contractAddress,
+        deploymentTxHash: existingReceipt.deploymentTxHash,
+        receiptFile,
+        pendingJournalStatus: "absent",
+      };
+    }
+    throw new Error(`No pending deployment journal found at '${pendingFile}'. Nothing to recover.`);
+  }
+
+  // Path B: Pending journal exists
+  let rawJournal;
+  try {
+    rawJournal = JSON.parse(readFileSync(pendingFile, "utf8"));
+  } catch (e) {
+    console.error(`Pending journal at '${pendingFile}' is malformed JSON.`);
+    console.error("DO NOT REDEPLOY.");
+    throw new Error(`Failed to parse pending deployment journal: ${e.message}`);
+  }
+
+  try {
+    validatePendingJournal(rawJournal);
+  } catch (e) {
+    console.error(`Pending journal validation failed: ${e.message}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw e;
+  }
+
+  // Confirmation deployer address must match journal deployer
+  if (confirmAddress.toLowerCase() !== rawJournal.deployerAddress.toLowerCase()) {
+    const err = new Error(
+      `Confirmation address '${confirmAddress}' does not match journal deployer '${rawJournal.deployerAddress}'.`
+    );
+    console.error(err.message);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw err;
+  }
+
+  // Source integrity check
+  try {
+    validateRecoverySourceIntegrity({ rootPath, journal: rawJournal, execGitFn });
+  } catch (e) {
+    console.error(`Source integrity check failed: ${e.message}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw e;
+  }
+
+  // Idempotency: both receiptFile and pendingFile exist
+  if (existsSync(receiptFile)) {
+    try {
+      let existingReceipt;
+      try {
+        existingReceipt = JSON.parse(readFileSync(receiptFile, "utf8"));
+      } catch (e) {
+        throw new Error(`Existing receipt file is malformed JSON: ${e.message}`);
+      }
+
+      validateReceiptMatchesJournal({
+        receipt: existingReceipt,
+        journal: rawJournal,
+        confirmContractAddress,
+      });
+
+      const genClient = client || createClient({
+        chain: studioDevnet,
+        endpoint: CANONICAL_RPC,
+      });
+
+      const onChainReceipt = await genClient.waitForTransactionReceipt({
+        hash: rawJournal.deploymentTxHash,
+        waitUntil: "finalized",
+        retries: 60,
+      });
+      const validatedOnChainAddr = validateDeployReceipt(onChainReceipt, {
+        expectedTxHash: rawJournal.deploymentTxHash,
+        expectedDeployer: rawJournal.deployerAddress,
+      });
+      if (validatedOnChainAddr.toLowerCase() !== existingReceipt.contractAddress.toLowerCase()) {
+        throw new Error(
+          `On-chain contract address '${validatedOnChainAddr}' does not match receipt '${existingReceipt.contractAddress}'.`
+        );
+      }
+
+      await verifyDeployedContract(genClient, existingReceipt.contractAddress);
+
+      const existingEnv = existsSync(envLocal) ? readFileSync(envLocal, "utf8") : "";
+      const updatedEnv = updateEnvContent(existingEnv, {
+        NEXT_PUBLIC_CONTRACT_ADDRESS: existingReceipt.contractAddress,
+        NEXT_PUBLIC_CHAIN_ID: rawJournal.chainId.toString(),
+        NEXT_PUBLIC_STUDIO_RPC: CANONICAL_RPC,
+        NEXT_PUBLIC_STUDIO_EXPLORER: CANONICAL_EXPLORER,
+        GENLAYER_STUDIO_URL: CANONICAL_RPC,
+      });
+      atomicWriteFile(envLocal, updatedEnv);
+
+      try {
+        (unlinkFn || unlinkSync)(pendingFile);
+      } catch (e) {
+        const delErr = new Error(`Idempotent recovery verified receipt but failed to remove pending journal: ${e.message}`);
+        delErr.pendingDeletionFailed = true;
+        throw delErr;
+      }
+
+      console.log(`[IDEMPOTENT RECOVERY] Existing finalized receipt verified. Removed stale pending journal.`);
+      return {
+        recovered: true,
+        idempotent: true,
+        contractAddress: existingReceipt.contractAddress,
+        deploymentTxHash: existingReceipt.deploymentTxHash,
+        receiptFile,
+        pendingJournalStatus: "removed",
+      };
+    } catch (e) {
+      console.error(`Idempotent recovery failed: ${e.message}`);
+      console.error(`Pending journal preserved at: ${pendingFile}`);
+      console.error("DO NOT REDEPLOY.");
+      throw e;
+    }
+  }
+
+  // Normal Recovery: Query on-chain transaction
+  const genClient = client || createClient({
+    chain: studioDevnet,
+    endpoint: CANONICAL_RPC,
+  });
+
+  let receipt;
+  try {
+    receipt = await genClient.waitForTransactionReceipt({
+      hash: rawJournal.deploymentTxHash,
+      waitUntil: "finalized",
+      retries: 60,
+    });
+  } catch (e) {
+    console.error(`Failed to retrieve transaction receipt for ${rawJournal.deploymentTxHash}: ${e.message}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw e;
+  }
+
+  let contractAddress;
+  try {
+    contractAddress = validateDeployReceipt(receipt, {
+      expectedTxHash: rawJournal.deploymentTxHash,
+      expectedDeployer: rawJournal.deployerAddress,
+    });
+  } catch (e) {
+    console.error(`Receipt validation failed: ${e.message}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw e;
+  }
+
+  // Contract address confirmation check BEFORE ANY LOCAL WRITES!
+  if (contractAddress.toLowerCase() !== confirmContractAddress.toLowerCase()) {
+    const err = new Error(
+      `Validated receipt contract address '${contractAddress}' does not match confirmed contract address '${confirmContractAddress}'.`
+    );
+    console.error(err.message);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw err;
+  }
+
+  // Live on-chain schema & fresh zero-state check
+  try {
+    await verifyDeployedContract(genClient, contractAddress);
+  } catch (e) {
+    console.error(`On-chain contract verification failed: ${e.message}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw e;
+  }
+
+  // 1. Atomically update web/.env.local
+  try {
+    const existingEnv = existsSync(envLocal) ? readFileSync(envLocal, "utf8") : "";
+    const updatedEnv = updateEnvContent(existingEnv, {
+      NEXT_PUBLIC_CONTRACT_ADDRESS: contractAddress,
+      NEXT_PUBLIC_CHAIN_ID: rawJournal.chainId.toString(),
+      NEXT_PUBLIC_STUDIO_RPC: CANONICAL_RPC,
+      NEXT_PUBLIC_STUDIO_EXPLORER: CANONICAL_EXPLORER,
+      GENLAYER_STUDIO_URL: CANONICAL_RPC,
+    });
+    atomicWriteFile(envLocal, updatedEnv);
+  } catch (e) {
+    console.error(`Failed to update environment: ${e.message}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw e;
+  }
+
+  // 2. Atomically write deployments/makewhole-v2.json
+  const receiptArtifact = {
+    project: "makewhole",
+    version: "v2",
+    chainId: rawJournal.chainId,
+    networkName: "GenLayer Studio-dev",
+    rpcHost: rawJournal.rpcHost,
+    explorerBaseUrl: CANONICAL_EXPLORER,
+    deployerAddress: rawJournal.deployerAddress,
+    contractAddress,
+    deploymentTxHash: rawJournal.deploymentTxHash,
+    sourceCommit: rawJournal.sourceCommit,
+    contractSourceSha256: rawJournal.contractSourceSha256,
+    executionResult: "FINISHED_WITH_RETURN",
+    broadcastAtUtc: rawJournal.broadcastAtUtc,
+    recoveredAtUtc: new Date().toISOString(),
+    sdkVersion,
+  };
+  const candidateFinalized = receipt.finalizedAtUtc || receipt.finalized_at_utc;
+  if (
+    candidateFinalized &&
+    typeof candidateFinalized === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(candidateFinalized) &&
+    !isNaN(Date.parse(candidateFinalized))
+  ) {
+    receiptArtifact.finalizedAtUtc = candidateFinalized;
+  }
+
+  try {
+    atomicWriteFile(receiptFile, JSON.stringify(receiptArtifact, null, 2) + "\n");
+  } catch (e) {
+    console.error(`Failed to write receipt artifact: ${e.message}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY.");
+    throw e;
+  }
+
+  // 3. Remove pending journal only after every step above succeeded
+  try {
+    if (existsSync(pendingFile)) {
+      (unlinkFn || unlinkSync)(pendingFile);
+    }
+  } catch (e) {
+    console.error(`Failed to remove pending journal: ${e.message}`);
+    console.error(`Receipt artifact and environment were updated, but pending journal '${pendingFile}' could not be deleted.`);
+    console.error("DO NOT REDEPLOY.");
+    const err = new Error(`Recovery completed local writes but failed to delete pending journal: ${e.message}`);
+    err.pendingDeletionFailed = true;
+    throw err;
+  }
+
+  return {
+    recovered: true,
+    contractAddress,
+    deploymentTxHash: rawJournal.deploymentTxHash,
+    receiptFile,
+    pendingJournalStatus: "removed",
+  };
 }
