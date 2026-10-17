@@ -1,4 +1,10 @@
+.env
+.env.*
+!.env.example
 .env.local
+web/.env
+web/.env.*
+!web/.env.example
 web/.env.local
 node_modules/
 web/node_modules/

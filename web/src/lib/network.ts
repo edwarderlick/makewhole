@@ -5,7 +5,7 @@ export const STUDIO_DEV = {
   chainName: "GenLayer Studio Next",
   nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
   rpcUrls: ["https://studio-next.genlayer.com/api"],
-  blockExplorerUrls: ["https://explorer-Studio Next.genlayer.com"],
+  blockExplorerUrls: ["https://explorer-studio-dev.genlayer.com"],
 } as const;
 
 export const STUDIONET_FALLBACK = {

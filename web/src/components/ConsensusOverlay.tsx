@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { formatGlError } from "@/lib/formatError";
+import { explorerTx } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
 /* ─── GenLayer consensus stages (real) ─── */
@@ -410,7 +411,7 @@ export function ConsensusOverlay() {
         <div className="bg-[#b6ff3b]/5 border border-[#b6ff3b]/20 rounded p-3 text-xs break-all mb-4 flex flex-col gap-2">
           <span>{hash}</span>
           <a
-            href={`https://explorer-Studio Next.genlayer.com/tx/${hash}`}
+            href={explorerTx(hash)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] uppercase underline opacity-70 hover:opacity-100"

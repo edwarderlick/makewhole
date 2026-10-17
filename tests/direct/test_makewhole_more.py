@@ -419,7 +419,7 @@ def test_alpha_court_expire_recovers(direct_vm, direct_deploy, direct_alice, dir
     _fund_and_bond(direct_vm, contract, direct_charlie, direct_bob)
     direct_vm.sender = direct_alice
     direct_vm.value = ESCROW
-    job_id = contract.create_job(BRIEF, PAY_B, PAY_C, 0, int(time.time() + 301), ("0x" + direct_bob.hex()), ("0x" + direct_charlie.hex()))
+    job_id = contract.create_job(BRIEF, PAY_B, PAY_C, 0, int(time.time() + 7200), ("0x" + direct_bob.hex()), ("0x" + direct_charlie.hex()))
     
     # fake time passage for expire
     direct_vm.message_raw = {"datetime": "2050-01-01T00:00:20Z"}

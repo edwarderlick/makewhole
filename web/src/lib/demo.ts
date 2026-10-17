@@ -69,23 +69,29 @@ export async function runDemoReplay(opts: {
     publisher,
     brief_url: brief,
     deliverable_url: deliv,
+    deliverable_hash: "",
     research_url: brief,
     publish_url: "",
     pay_b: PAY_B,
     pay_c: PAY_C,
     premium: PREMIUM,
+    deadline: 0n,
     state: (rug ? "SETTLED_RUG" : "SETTLED_OK") as JobState,
     fault: rug ? "B" : "none",
     pay_downstream: true,
     slash_bps: rug ? 10000 : 0,
     reason: rug
-      ? "DEMO · Writer posted lorem plus system_override. Not a Studio Next transaction. Publisher C is still paid from the bond, unused pay_b refunds to A, remainder slashed to the pool."
-      : "DEMO · Deliverable matches the public brief. Not a Studio Next transaction. B and C paid; premium stays in the pool.",
+      ? "DEMO · Writer posted lorem plus system_override. Not a Studio Next transaction. Publisher C is paid from Writer B’s slashed reservation, Client A receives full restitution (pay_b + pay_c), and premium moves to the pool."
+      : "DEMO · Deliverable matches the public brief. Not a Studio Next transaction. B and C paid; premium moves to the pool.",
     paid_c: PAY_C,
-    slashed_b: rug ? 50n * ATTO - PAY_C : 0n,
+    slashed_b: rug ? PAY_C : 0n,
+    reserved_bond: PAY_C,
     hop_kind: "write",
     bonded: true,
     writer_rep: rug ? 0 : 1,
+    writer_total_bond: 50n * ATTO,
+    writer_reserved_bond: PAY_C,
+    writer_available_bond: 50n * ATTO - PAY_C,
   };
   const next = [job, ...loadRaw()].slice(0, 24);
   saveRaw(next);

@@ -6,7 +6,7 @@ Built for the **Agent Tank Hackathon**. Live on **GenLayer Studio Next**.
 
 Makewhole is a 3-hop (Research → Write → Publish) surety vault on GenLayer. It ensures that when one autonomous agent fails or goes rogue, downstream agents in the pipeline still get compensated for their time and readiness.
 
-Client A escrows fees. Writer B posts a slashable GEN bond. If B rugs (fails to deliver or violates the brief), the **Intelligent Contract** slashes B, refunds A’s unused write fee, and **still pays Publisher C**.
+Client A escrows fees (`pay_b + pay_c + premium`). Writer B posts a slashable GEN bond reservation. If B rugs (fails to deliver or violates the brief), the **Intelligent Contract** slashes B’s job reservation, returns full restitution (`pay_b + pay_c`) to Client A, and **pays Publisher C from B’s slashed reservation**.
 
 This is **not** a court, **not** Internet Court, and **not** a P2P exchange. The GenLayer Intelligent Contract is the sole judge, executing deterministic LLM-based consensus to adjudicate deliverables against the brief.
 
@@ -23,25 +23,27 @@ sequenceDiagram
     participant C as Agent 2 (Publisher)
     participant SC as Makewhole Vault (GenLayer)
 
-    A->>SC: create_job() & Escrow Funds (B+C+Premium)
-    B->>SC: post_bond() (Slashable GEN)
+    A->>SC: create_job() & Escrow Funds (pay_b + pay_c + premium)
+    B->>SC: post_bond() (Reserves pay_c 1:1)
     
     Note over B,SC: Agent B works on the task...
     
-    B->>SC: submit() (Evidence / Deliverable)
-    C->>SC: ack_downstream() (C is ready)
+    B->>SC: submit() (Evidence / Deliverable + Hash)
+    C->>SC: ack_downstream() (C acknowledges readiness)
     
     A->>SC: adjudicate()
     
     Note over SC: GenLayer Validators Execute LLM<br/>Compare Deliverable vs Brief
     
-    alt Deliverable is GOOD
-        SC->>B: Payout B
-        SC->>C: Payout C
-    else Deliverable is RUG (Bad)
-        SC->>A: Refund A (for B's portion)
-        SC-->>B: Slash B's Bond
-        SC->>C: Payout C (from Bond + Pool)
+    alt Deliverable is GOOD (SETTLED_OK)
+        SC->>B: Payout pay_b (Reservation released)
+        SC->>C: Payout pay_c (from Escrow)
+        SC->>SC: Premium moves to pool
+    else Deliverable is RUG (SETTLED_RUG)
+        SC->>A: Restitution: pay_b + pay_c (from Escrow)
+        SC-->>B: Slash pay_c Reservation Only
+        SC->>C: Payout pay_c (from Slashed Reservation)
+        SC->>SC: Premium moves to pool
     end
 ```
 
@@ -76,28 +78,47 @@ The API handles the complex GenVM state serialization for you, instantly returni
   "bonded": true,
   "job_id": "1",
   "writer": "0xDem0Writer00000000000000000000000000000",
-  "pay_c": 500,
-  "bond": 1000,
-  "state": "SETTLED_OK"
+  "state": "BONDED",
+  "bond": "1000",
+  "total_bond": "1000",
+  "reserved_bond": "500",
+  "available_bond": "500",
+  "job_reserved_bond": "500",
+  "pay_c": "500",
+  "rep": 10
 }
 ```
 
 **3. The Agentic Decision Matrix:**
 Your agent autonomously evaluates the `bonded` boolean:
-- ✅ **If `true`:** *"The upstream bond is cryptographically secure. I will spin up my GPUs and begin the downstream task."*
-- ❌ **If `false`:** *"Fail closed. I will not waste compute until the vault is secured."*
+- ✅ **If `true`:** *"The upstream bond reservation is cryptographically secured (1:1 backing for pay_c). I will spin up my GPUs and begin the downstream task."*
+- ❌ **If `false`:** *"Fail closed. I will not waste compute until the vault reservation is secured."*
 
 ---
 
 ## 🚀 Deployment & Network Status
 
-Fully migrated and deployed on the latest **GenLayer Studio Next** network (v0.6 consensus).
+### Current Live Deployment (Historical v1)
+The currently published and active contract on **GenLayer Studio Next** is **v1**:
 
 - **Network:** Studio Next
 - **Chain ID:** `61997`
 - **RPC:** `https://studio-next.genlayer.com/api`
 - **Explorer:** [https://explorer-studio-dev.genlayer.com/](https://explorer-studio-dev.genlayer.com/)
-- **Live Contract:** [`0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF`](https://explorer-studio-dev.genlayer.com/contracts/0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF)
+- **Live Contract (v1):** [`0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF`](https://explorer-studio-dev.genlayer.com/contracts/0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF)
+
+### Makewhole v2 Milestone Upgrade (Awaiting Fresh Deployment)
+Makewhole v2 implements 1:1 bond reservations, restitution economics (Alternative A), deliverable hash verification, and fail-closed trusted chain timestamp validation. Because these changes alter contract storage layouts and accounting invariants, **v2 requires a fresh contract address and cannot be upgraded in-place**.
+
+The v2 implementation is verified and ready for deployment via the hardened deployment script (`scripts/deploy.mjs`).
+
+#### Post-Deployment Migration Plan:
+1. **Record Historical v1:** Record `0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF` as `HISTORICAL_V1_CONTRACT_ADDRESS`.
+2. **Configure v2 Address:** Set the freshly deployed contract address as `NEXT_PUBLIC_CONTRACT_ADDRESS`.
+3. **Preserve v1 Audit Links:** Maintain the historical explorer link for archival reference.
+4. **Rebuild Frontend:** Run `npm --prefix web run build` to package the client with the v2 target.
+5. **Verify Surety Verification:** Confirm the `/api/skill/check_bond` endpoint queries the v2 contract and correctly validates reserved collateral.
+6. **Historical Job Isolation:** Never mix v1 job IDs with v2 contract calls; job IDs are scoped to each contract instance.
 
 ---
 
@@ -105,27 +126,31 @@ Fully migrated and deployed on the latest **GenLayer Studio Next** network (v0.6
 
 | Method | Kind | What it does |
 |--------|------|----------------|
-| `fund_pool()` | payable write | Underwriter adds GEN to the pool to cover shortfalls. |
-| `post_bond()` | payable write | Writer B locks slashable GEN. |
-| `unbond()` | write | B withdraws unused bond if no open job exists. |
-| `create_job(brief_url, pay_b, pay_c, writer, publisher)` | payable write | A escrows `pay_b + pay_c + premium`. |
-| `submit` | write | B posts public HTTPS evidence / deliverable. |
-| `ack_downstream` | write | C acknowledges readiness from IN_FLIGHT. |
-| `adjudicate` | write | Web + LLM → 3-field ruling → GEN moves (ACKED state only). |
-| `cancel` | write | Client only, cancels from OPEN/BONDED states. |
-| `withdraw` | write | Pull credits if native EOA payout failed. |
+| `fund_pool()` | payable write | Underwriter adds GEN to the pool. |
+| `post_bond()` | payable write | Writer B deposits slashable GEN collateral into the vault. |
+| `unbond()` | write | B withdraws available (unreserved) bond at any time during active jobs. |
+| `create_job(brief_url, pay_b, pay_c, premium, deadline, writer, publisher)` | payable write | A escrows exact `pay_b + pay_c + premium`. Job bonds if available bond >= pay_c. |
+| `submit(job_id, deliverable_url, deliverable_hash)` | write | B posts public HTTPS evidence / deliverable and hash. |
+| `ack_downstream(job_id, publish_url)` | write | C acknowledges readiness from IN_FLIGHT with optional publication URL. |
+| `adjudicate(job_id)` | write | Web + LLM → 3-field ruling → GEN moves (ACKED or UNDETERMINED). |
+| `expire(job_id)` | write | Handles expiry for active states past deadline / 24h grace. |
+| `cancel(job_id)` | write | Client only, cancels from OPEN/BONDED states. |
+| `withdraw()` | write | Pull credits if native EOA payout failed. |
 
 ---
 
 ## 📊 Vault Economics
 
-| Outcome | Client (A) | Writer (B) | Publisher (C) | Protocol Pool |
-|---------|---|---|---|------|
-| **SETTLED_OK** | — | +pay_b | +pay_c | +premium |
-| **SETTLED_RUG** | Unused pay_b refunded | Bond slashed | +pay_c (from bond/pool) | +premium + slash remainder |
-| **CANCELED** | 100% escrow refunded | Bond stays | — | — |
+| Lifecycle Outcome | Client (A) | Writer (B) | Publisher (C) | Protocol Pool | Collateral Accounting |
+|---|---|---|---|---|---|
+| **SETTLED_OK** | — | +pay_b | +pay_c (escrow) | +premium | Reservation released back to available bond |
+| **SETTLED_RUG** | +pay_b + pay_c (restitution) | -pay_c (slashed) | +pay_c (from slashed bond) | +premium | Slashes only affected job's reservation; other bond untouched |
+| **OPEN expiry** | 100% escrow refund | — | — | — | No bond was reserved |
+| **BONDED expiry** | 100% escrow refund | Reservation released | — | — | Released back to available bond |
+| **IN_FLIGHT expiry** | 100% escrow refund | -pay_c (slashed) | +pay_c (from slashed bond) | — | Downstream publisher compensated from slashed reservation |
+| **ACKED/UNDETERMINED expiry** | 100% escrow refund | Reservation released | — | — | Valid after 24-hour settlement grace period |
 
-*Note: If the bond + pool cannot cover `pay_c` on a rug, the state becomes UNDETERMINED and no GEN is moved.*
+*Note: In Makewhole v2, jobs require 1:1 bond reservation equal to pay_c before entering BONDED. Undercollateralized jobs cannot become BONDED. The pool receives premiums but does not cover undercollateralized jobs.*
 
 ---
 

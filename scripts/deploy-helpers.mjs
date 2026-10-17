@@ -1,0 +1,277 @@
+import { createHash } from "node:crypto";
+import { dirname } from "node:path";
+import { mkdirSync, writeFileSync, renameSync } from "node:fs";
+
+export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+export const ADDR_REGEX = /^0x[0-9a-fA-F]{40}$/;
+
+export const TARGET_ENV_KEYS = [
+  "NEXT_PUBLIC_CONTRACT_ADDRESS",
+  "NEXT_PUBLIC_CHAIN_ID",
+  "NEXT_PUBLIC_STUDIO_RPC",
+  "NEXT_PUBLIC_STUDIO_EXPLORER",
+  "GENLAYER_STUDIO_URL",
+];
+
+export const REQUIRED_V2_METHODS = [
+  "list_ids",
+  "get_economics",
+  "get_bond",
+  "get_reserved_bond",
+  "get_available_bond",
+  "check_bond",
+  "get_settlement",
+];
+
+export const REQUIRED_ZERO_ECONOMICS = [
+  "pool",
+  "locked_bonds",
+  "locked_jobs",
+  "credits",
+  "slash_count",
+  "settled_ok",
+  "settled_rug",
+];
+
+/**
+ * Parses and strictly validates CLI arguments for scripts/deploy.mjs.
+ * Only --dry-run, --execute, and --update-env are accepted.
+ */
+export function parseDeploymentArgs(argv) {
+  const allowedFlags = new Set(["--dry-run", "--execute", "--update-env"]);
+  for (const arg of argv) {
+    if (!allowedFlags.has(arg)) {
+      throw new Error(`Unknown argument '${arg}'. Allowed flags: --dry-run, --execute, --update-env.`);
+    }
+  }
+
+  const hasDryRun = argv.includes("--dry-run");
+  const hasExecute = argv.includes("--execute");
+  const hasUpdateEnv = argv.includes("--update-env");
+
+  if (hasDryRun && hasExecute) {
+    throw new Error("Cannot combine --dry-run and --execute. Please choose one mode.");
+  }
+
+  if (hasUpdateEnv && !hasExecute) {
+    throw new Error("--update-env can only be specified when --execute is active.");
+  }
+
+  return {
+    mode: hasExecute ? "execute" : "dry-run",
+    updateEnv: hasUpdateEnv,
+  };
+}
+
+/**
+ * Validates committed source state against working tree.
+ */
+export function checkReleaseSourceGate({ headCommit, committedCode, workingCode, porcelainStatus }) {
+  const issues = [];
+
+  if (!headCommit || typeof headCommit !== "string" || headCommit.trim().length === 0) {
+    issues.push("HEAD commit could not be resolved.");
+  }
+
+  if (committedCode === null || committedCode === undefined) {
+    issues.push("Committed contract (HEAD:contracts/makewhole.py) not found.");
+  }
+
+  const normalizeCode = (c) => (c || "").replace(/\r\n/g, "\n");
+  const workingSha = createHash("sha256").update(normalizeCode(workingCode)).digest("hex");
+  const committedSha =
+    committedCode !== null && committedCode !== undefined
+      ? createHash("sha256").update(normalizeCode(committedCode)).digest("hex")
+      : "UNAVAILABLE";
+
+  if (workingSha !== committedSha) {
+    issues.push(`Working contract SHA-256 (${workingSha}) does not match committed HEAD SHA-256 (${committedSha}).`);
+  }
+
+  if (porcelainStatus && porcelainStatus.trim().length > 0) {
+    issues.push(`Uncommitted changes detected in critical release files:\n${porcelainStatus.trim()}`);
+  }
+
+  return {
+    passed: issues.length === 0,
+    workingSha,
+    committedSha,
+    headCommit: headCommit || "UNAVAILABLE",
+    issues,
+  };
+}
+
+/**
+ * Validates that an SDK fee quote is positive and structurally complete.
+ * Fails closed without inventing fallbacks.
+ */
+export function validateFeeQuote(quote) {
+  if (!quote || typeof quote !== "object") {
+    throw new Error("Invalid fee quote: quote is not an object.");
+  }
+
+  const dist = quote.distribution;
+  if (!dist || typeof dist !== "object") {
+    throw new Error("Invalid fee quote: missing distribution object.");
+  }
+
+  if (
+    dist.leaderTimeunitsAllocation === undefined ||
+    dist.validatorTimeunitsAllocation === undefined ||
+    dist.executionBudgetPerRound === undefined
+  ) {
+    throw new Error("Invalid fee quote: distribution missing required allocation fields.");
+  }
+
+  const rawFeeVal = quote.feeValue ?? quote.fee_value;
+  if (rawFeeVal === undefined || rawFeeVal === null) {
+    throw new Error("Invalid fee quote: missing feeValue.");
+  }
+
+  let feeValBigInt;
+  try {
+    feeValBigInt = BigInt(rawFeeVal);
+  } catch {
+    throw new Error("Invalid fee quote: feeValue is not a valid integer/bigint.");
+  }
+
+  if (feeValBigInt <= 0n) {
+    throw new Error("Invalid fee quote: feeValue must be positive.");
+  }
+
+  return {
+    feeValue: feeValBigInt,
+    distribution: dist,
+    messageAllocations: quote.messageAllocations,
+  };
+}
+
+/**
+ * Strictly validates a finalized transaction receipt from client.waitForTransactionReceipt.
+ */
+export function validateDeployReceipt(receipt) {
+  if (!receipt || typeof receipt !== "object") {
+    throw new Error("Deployment receipt is missing or invalid.");
+  }
+
+  if (receipt.statusName !== "FINALIZED") {
+    throw new Error(
+      `Transaction status '${receipt.statusName}' is not FINALIZED. ACCEPTED or other non-final statuses are not permitted.`
+    );
+  }
+
+  if (receipt.txExecutionResultName !== "FINISHED_WITH_RETURN") {
+    throw new Error(
+      `Execution result '${receipt.txExecutionResultName}' is not FINISHED_WITH_RETURN. SUCCESS or other undocumented aliases are not permitted.`
+    );
+  }
+
+  if (receipt.txDataDecoded?.type !== "deploy") {
+    throw new Error(`Transaction decoded type '${receipt.txDataDecoded?.type}' is not 'deploy'.`);
+  }
+
+  const primaryAddress = receipt.txDataDecoded?.contractAddress;
+  if (
+    !primaryAddress ||
+    typeof primaryAddress !== "string" ||
+    !ADDR_REGEX.test(primaryAddress) ||
+    primaryAddress.toLowerCase() === ZERO_ADDRESS
+  ) {
+    throw new Error(`Decoded contractAddress '${primaryAddress}' is not a valid nonzero 20-byte 0x address.`);
+  }
+
+  if (receipt.recipient) {
+    if (typeof receipt.recipient !== "string" || receipt.recipient.toLowerCase() !== primaryAddress.toLowerCase()) {
+      throw new Error(`Recipient '${receipt.recipient}' does not match decoded contractAddress '${primaryAddress}'.`);
+    }
+  }
+
+  return primaryAddress;
+}
+
+/**
+ * Validates that a fresh contract instance has the full v2 schema, zero jobs,
+ * and zeroed economics accounting.
+ */
+export function validateFreshContractState({ schema, ids, economics }) {
+  if (!schema || typeof schema !== "object" || !schema.methods) {
+    throw new Error("Contract schema is missing or invalid.");
+  }
+
+  const availableMethods = new Set(Object.keys(schema.methods));
+  for (const m of REQUIRED_V2_METHODS) {
+    if (!availableMethods.has(m)) {
+      throw new Error(`Contract schema missing required v2 method '${m}'.`);
+    }
+  }
+
+  if (!Array.isArray(ids) || ids.length !== 0) {
+    throw new Error(
+      `Freshly deployed contract must have 0 jobs, found: ${Array.isArray(ids) ? ids.length : "invalid"}`
+    );
+  }
+
+  if (!economics || typeof economics !== "object") {
+    throw new Error("get_economics() did not return an object.");
+  }
+
+  for (const f of REQUIRED_ZERO_ECONOMICS) {
+    const val = economics[f];
+    if (val === undefined || val === null) {
+      throw new Error(`get_economics() missing required field '${f}'.`);
+    }
+    const bn = BigInt(val);
+    if (bn !== 0n) {
+      throw new Error(`Freshly deployed contract get_economics().${f} must be 0, got ${val}`);
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Surgically updates only the 5 target keys in an env file while preserving
+ * comments, blank lines, ordering, and unrelated keys (including other NEXT_PUBLIC_* variables).
+ */
+export function updateEnvContent(existingContent, replacements) {
+  const targetSet = new Set(TARGET_ENV_KEYS);
+  const lines = existingContent ? existingContent.split(/\r?\n/) : [];
+  const handledKeys = new Set();
+
+  const newLines = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return line;
+    }
+    const eqIdx = line.indexOf("=");
+    if (eqIdx === -1) {
+      return line;
+    }
+    const key = line.slice(0, eqIdx).trim();
+    if (targetSet.has(key) && replacements[key] !== undefined) {
+      handledKeys.add(key);
+      return `${key}=${replacements[key]}`;
+    }
+    return line;
+  });
+
+  // Append any target keys that were not in the file
+  for (const key of TARGET_ENV_KEYS) {
+    if (!handledKeys.has(key) && replacements[key] !== undefined) {
+      newLines.push(`${key}=${replacements[key]}`);
+    }
+  }
+
+  return newLines.join("\n");
+}
+
+/**
+ * Writes a file atomically via tempfile + renameSync.
+ */
+export function atomicWriteFile(filePath, content) {
+  const dir = dirname(filePath);
+  mkdirSync(dir, { recursive: true });
+  const tmpPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  writeFileSync(tmpPath, content, "utf8");
+  renameSync(tmpPath, filePath);
+}
