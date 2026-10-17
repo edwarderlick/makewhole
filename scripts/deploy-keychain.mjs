@@ -11,6 +11,7 @@ import {
   calculateFundingDeficit,
   assertKeychainAccountCanBeCreated,
   MAX_TARGET_DEPLOYER_BALANCE_GEN,
+  MAX_TARGET_DEPLOYER_BALANCE_WEI,
 } from "./deploy-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -120,10 +121,71 @@ export function parseKeychainArgs(args = process.argv.slice(2)) {
 }
 
 /**
+ * Evaluates readiness of keychain operator preflight.
+ * Pure function that determines readiness status, exit code, and blocker list.
+ */
+export function evaluateKeychainReadiness({
+  accountExists,
+  malformedKeyError = null,
+  publicAddress = null,
+  balanceLookupError = null,
+  balanceWei = null,
+  deficitInfo = null,
+  dryRunRes = null,
+}) {
+  const blockers = [];
+
+  if (!accountExists) {
+    blockers.push(`Deployer account '${DEPLOYER_KEYCHAIN_KEY}' is absent from OS keychain.`);
+  } else if (malformedKeyError) {
+    blockers.push(`Deployer keychain entry is malformed: ${malformedKeyError.message}`);
+  } else if (!publicAddress) {
+    blockers.push("Failed to derive public address from deployer keychain account.");
+  }
+
+  if (accountExists && !malformedKeyError && publicAddress) {
+    if (balanceLookupError) {
+      blockers.push(`Balance lookup failed: ${balanceLookupError.message}`);
+    } else if (balanceWei === null || balanceWei === undefined) {
+      blockers.push("Deployer balance is unavailable.");
+    } else if (deficitInfo?.needsFunding || balanceWei < MAX_TARGET_DEPLOYER_BALANCE_WEI) {
+      const cur = balanceWei !== null ? balanceWei.toString() : "0";
+      const def = deficitInfo ? deficitInfo.deficitWei.toString() : "unknown";
+      blockers.push(
+        `Deployer balance (${cur} wei) is below 1 GEN target (${MAX_TARGET_DEPLOYER_BALANCE_WEI.toString()} wei). Deficit: ${def} wei. Funding is required.`
+      );
+    }
+  }
+
+  if (!dryRunRes) {
+    blockers.push("Ordinary deployment dry-run was not executed.");
+  } else {
+    if (dryRunRes.error) {
+      blockers.push(`Ordinary deployment dry-run failed to start: ${dryRunRes.error.message || dryRunRes.error}`);
+    } else if (dryRunRes.signal) {
+      blockers.push(`Ordinary deployment dry-run was terminated by signal: ${dryRunRes.signal}`);
+    } else if (dryRunRes.status === null || dryRunRes.status === undefined) {
+      blockers.push("Ordinary deployment dry-run exit status is null or unavailable.");
+    } else if (dryRunRes.status !== 0) {
+      blockers.push(`Ordinary deployment dry-run exited with nonzero code ${dryRunRes.status}.`);
+    }
+  }
+
+  const ready = blockers.length === 0;
+  return {
+    ready,
+    readiness: ready ? "READY" : "BLOCKED",
+    exitCode: ready ? 0 : 1,
+    blockers,
+  };
+}
+
+/**
  * Pure formatter for keychain preflight header and status.
  */
 export function formatPreflightReport({
   accountExists,
+  malformedKeyError = null,
   publicAddress = null,
   balanceWei = null,
   deficitInfo = null,
@@ -142,6 +204,9 @@ export function formatPreflightReport({
     lines.push(`Deployer account '${DEPLOYER_ACCOUNT_NAME}' is not present in the OS keychain.`);
     lines.push("To generate and register a dedicated deployer key locally, run:");
     lines.push("  node scripts/deploy-keychain.mjs --prepare-account\n");
+  } else if (malformedKeyError) {
+    lines.push("\n[STATUS] Keychain entry is malformed.");
+    lines.push(`Error: ${malformedKeyError.message}\n`);
   } else {
     lines.push(`Deployer Address  : ${publicAddress}`);
     lines.push(`RPC Host          : ${rpcHost}`);
@@ -164,6 +229,7 @@ export function formatPreflightReport({
 /**
  * Preflight executor (Read-Only).
  * Checks keychain, derives public address, queries balance, runs dry-run, reports funding.
+ * Fails closed with exitCode 1 if any condition is not met.
  * Never exposes the secret. Never signs or broadcasts.
  */
 export async function executeKeychainPreflight({
@@ -177,29 +243,39 @@ export async function executeKeychainPreflight({
   const accountExists = rawKey !== null && rawKey !== undefined && rawKey !== "";
 
   let publicAddress = null;
+  let malformedKeyError = null;
   let balanceWei = null;
   let deficitInfo = null;
+  let balanceLookupError = null;
 
   if (accountExists) {
-    const normKey = normalizePrivateKey(rawKey);
-    const account = privateKeyToAccount(normKey);
-    publicAddress = account.address;
-
-    const rpcClient = client || createClient({
-      chain: studioDevnet,
-      endpoint: CANONICAL_RPC,
-    });
-
     try {
-      balanceWei = await rpcClient.getBalance({ address: publicAddress });
-      deficitInfo = calculateFundingDeficit(balanceWei, MAX_TARGET_DEPLOYER_BALANCE_GEN);
+      const normKey = normalizePrivateKey(rawKey);
+      const account = privateKeyToAccount(normKey);
+      publicAddress = account.address;
     } catch (e) {
-      console.warn(`[WARN] Could not query deployer balance: ${e.message}`);
+      malformedKeyError = e;
+    }
+
+    if (publicAddress) {
+      const rpcClient = client || createClient({
+        chain: studioDevnet,
+        endpoint: CANONICAL_RPC,
+      });
+
+      try {
+        balanceWei = await rpcClient.getBalance({ address: publicAddress });
+        deficitInfo = calculateFundingDeficit(balanceWei, MAX_TARGET_DEPLOYER_BALANCE_GEN);
+      } catch (e) {
+        balanceLookupError = e;
+        console.warn(`[WARN] Could not query deployer balance: ${e.message}`);
+      }
     }
   }
 
   const report = formatPreflightReport({
     accountExists,
+    malformedKeyError,
     publicAddress,
     balanceWei,
     deficitInfo,
@@ -208,32 +284,49 @@ export async function executeKeychainPreflight({
 
   // Run ordinary deployment dry-run
   console.log("\nExecuting ordinary deployment dry-run...\n");
+  let dryRunRes;
   if (runDryRunFn) {
-    runDryRunFn();
+    try {
+      const fnRes = runDryRunFn();
+      if (typeof fnRes === "number") {
+        dryRunRes = { status: fnRes };
+      } else if (fnRes && typeof fnRes === "object") {
+        dryRunRes = fnRes;
+      } else {
+        dryRunRes = {
+          status: null,
+          error: new Error("runDryRunFn returned null or undefined result."),
+        };
+      }
+    } catch (e) {
+      dryRunRes = { status: null, error: e };
+    }
   } else {
     const deployScript = resolve(root, "scripts", "deploy.mjs");
-    spawnSync(process.execPath, [deployScript, "--dry-run"], { stdio: "inherit" });
+    dryRunRes = spawnSync(process.execPath, [deployScript, "--dry-run"], { stdio: "inherit" });
   }
 
-  // Summary footer
+  // Summary footer & readiness evaluation
+  const readinessRes = evaluateKeychainReadiness({
+    accountExists,
+    malformedKeyError,
+    publicAddress,
+    balanceLookupError,
+    balanceWei,
+    deficitInfo,
+    dryRunRes,
+  });
+
   console.log("\n======================================================================");
   console.log("KEYCHAIN OPERATOR READINESS SUMMARY");
   console.log("======================================================================");
-  if (!accountExists) {
-    console.log("Deployer Account  : ABSENT (account:makewhole-deployer-v2)");
-    console.log("Action Required   : Run 'node scripts/deploy-keychain.mjs --prepare-account'");
+  console.log(`Keychain Operator Readiness: ${readinessRes.readiness}`);
+  if (!readinessRes.ready) {
+    console.log("Blockers:");
+    readinessRes.blockers.forEach((b) => console.log(`  - ${b}`));
+    console.log("\nDO NOT RUN deploy from keychain until every required readiness check passes.");
   } else {
-    console.log(`Deployer Account  : ${publicAddress}`);
-    if (balanceWei !== null && deficitInfo) {
-      console.log(`Current Balance   : ${balanceWei.toString()} wei`);
-      if (deficitInfo.needsFunding) {
-        console.log(`Funding Required  : YES (Deficit: ${deficitInfo.deficitWei.toString()} wei to reach 1 GEN)`);
-        console.log(`Action Required   : Review and run future funding mode when ready:`);
-        console.log(`                    node scripts/deploy-keychain.mjs --fund --confirm-address ${publicAddress}`);
-      } else {
-        console.log("Funding Required  : NO (Deployer has sufficient balance >= 1 GEN)");
-      }
-    }
+    console.log("All keychain readiness criteria satisfied (account exists, funded >= 1 GEN, dry-run passed).");
   }
   console.log("======================================================================\n");
 
@@ -242,6 +335,11 @@ export async function executeKeychainPreflight({
     publicAddress,
     balanceWei,
     deficitInfo,
+    dryRunRes,
+    readiness: readinessRes.readiness,
+    ready: readinessRes.ready,
+    exitCode: readinessRes.exitCode,
+    blockers: readinessRes.blockers,
   };
 }
 
@@ -354,7 +452,25 @@ export async function executeFundDeployer({
     throw new Error(`Funding transaction was not finalized: status '${receipt?.statusName || receipt?.status}'.`);
   }
 
+  const execResult = receipt?.txExecutionResultName || receipt?.executionResult;
+  if (execResult && execResult !== "FINISHED_WITH_RETURN" && execResult !== "SUCCESS") {
+    throw new Error(
+      `Funding transaction failed on-chain: execution result '${execResult}' (tx: ${txHash}).`
+    );
+  }
+
   const verifiedBalance = await genClient.getBalance({ address: deployerAccount.address });
+  if (verifiedBalance < deficitInfo.targetWei) {
+    const err = new Error(
+      `Funding verification failed: resulting deployer balance (${verifiedBalance.toString()} wei) did not reach target (${deficitInfo.targetWei.toString()} wei). Deployer: ${deployerAccount.address}, Tx: ${txHash}.`
+    );
+    err.deployerAddress = deployerAccount.address;
+    err.txHash = txHash;
+    err.verifiedBalance = verifiedBalance;
+    err.targetWei = deficitInfo.targetWei;
+    throw err;
+  }
+
   console.log(`[SUCCESS] Funding finalized. Resulting deployer balance: ${verifiedBalance.toString()} wei.`);
 
   return {
@@ -371,6 +487,7 @@ export async function executeFundDeployer({
  * Guarded Future Deployment Mode (Prepared in code, not executed in this task).
  * Spawns scripts/deploy.mjs --execute --update-env with key passed only via child env.
  * Purges secret immediately in finally block.
+ * Fails closed if child process fails to spawn, terminates by signal, or exits nonzero.
  */
 export async function executeDeployFromKeychain({
   keytar,
@@ -424,9 +541,27 @@ export async function executeDeployFromKeychain({
     delete childEnv.GENLAYER_PRIVATE_KEY;
   }
 
+  if (childRes?.error) {
+    throw new Error(`Deployment execution failed to spawn: ${childRes.error.message || childRes.error}`);
+  }
+
+  if (childRes?.signal) {
+    throw new Error(`Deployment execution terminated by signal: ${childRes.signal}`);
+  }
+
+  if (childRes?.status === null || childRes?.status === undefined) {
+    throw new Error("Deployment execution status is unavailable or null.");
+  }
+
+  if (childRes.status !== 0) {
+    const err = new Error(`Deployment execution failed with exit code ${childRes.status}.`);
+    err.exitCode = childRes.status;
+    throw err;
+  }
+
   return {
     deployerAddress: deployerAccount.address,
-    exitCode: childRes?.status ?? 0,
+    exitCode: 0,
   };
 }
 
@@ -492,14 +627,15 @@ async function main() {
       process.exit(res.exitCode);
     } catch (e) {
       console.error(`Deployment Error: ${e.message}`);
-      process.exit(1);
+      process.exit(e.exitCode !== undefined ? e.exitCode : 1);
     }
     return;
   }
 
   // Default mode: preflight
   try {
-    await executeKeychainPreflight({ keytar });
+    const res = await executeKeychainPreflight({ keytar });
+    process.exit(res.exitCode);
   } catch (e) {
     console.error(`Preflight Error: ${e.message}`);
     process.exit(1);

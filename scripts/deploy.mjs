@@ -23,6 +23,7 @@ import {
   markPendingJournalBroadcast,
   RECEIPT_FILENAME,
   PENDING_JOURNAL_FILENAME,
+  CRITICAL_RELEASE_FILES,
 } from "./deploy-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -64,14 +65,7 @@ function getGitReleaseStatus() {
 
   let porcelainStatus = "";
   try {
-    const criticalFiles = [
-      "contracts/makewhole.py",
-      "scripts/deploy.mjs",
-      "scripts/deploy-helpers.mjs",
-      "package.json",
-      "package-lock.json",
-    ];
-    porcelainStatus = execFileSync("git", ["status", "--porcelain", "--", ...criticalFiles], {
+    porcelainStatus = execFileSync("git", ["status", "--porcelain", "--", ...CRITICAL_RELEASE_FILES], {
       cwd: root,
       encoding: "utf8",
     });

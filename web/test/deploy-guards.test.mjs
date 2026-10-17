@@ -23,11 +23,14 @@ import {
   PENDING_JOURNAL_FILENAME,
   MAX_TARGET_DEPLOYER_BALANCE_GEN,
   MAX_TARGET_DEPLOYER_BALANCE_WEI,
+  CRITICAL_RELEASE_FILES,
+  TX_HASH_REGEX,
 } from "../../scripts/deploy-helpers.mjs";
 
 import {
   parseKeychainArgs,
   formatPreflightReport,
+  evaluateKeychainReadiness,
   executePrepareAccount,
   executeKeychainPreflight,
   executeFundDeployer,
@@ -696,11 +699,17 @@ test("Keychain operator: missing keychain account behavior", async () => {
   let dryRunInvoked = false;
   const preflightRes = await executeKeychainPreflight({
     keytar: mockKeytar,
-    runDryRunFn: () => { dryRunInvoked = true; },
+    runDryRunFn: () => {
+      dryRunInvoked = true;
+      return { status: 0 };
+    },
   });
 
   assert.strictEqual(preflightRes.accountExists, false);
   assert.strictEqual(preflightRes.publicAddress, null);
+  assert.strictEqual(preflightRes.readiness, "BLOCKED");
+  assert.strictEqual(preflightRes.ready, false);
+  assert.strictEqual(preflightRes.exitCode, 1);
   assert.strictEqual(dryRunInvoked, true);
 
   // Future modes fail safely on missing account
@@ -817,4 +826,480 @@ test("Keychain operator: private key is absent from formatted output", () => {
   assert.doesNotMatch(report, new RegExp(secretKey));
   assert.doesNotMatch(report, new RegExp(secretKey.slice(2)));
   assert.match(report, new RegExp(publicAddress));
+});
+
+// ============================================================================
+// KEYCHAIN FAIL-CLOSED CORRECTION TESTS
+// ============================================================================
+
+test("Pending journal: malformed/short broadcast tx hash rejected", () => {
+  const intent = createPendingJournalIntent({
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    rpcHost: "studio-dev.genlayer.com",
+    deployerAddress: "0x1111111111111111111111111111111111111111",
+    sourceCommit: "b2a31b9d5450e8dd131ff792d66e5f8d88a63809",
+    contractSourceSha256: "aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344",
+  });
+
+  assert.throws(() => markPendingJournalBroadcast(intent, "0x"), /invalid transaction hash/);
+  assert.throws(() => markPendingJournalBroadcast(intent, "0x1234"), /invalid transaction hash/);
+  assert.throws(() => markPendingJournalBroadcast(intent, "not-a-hash"), /invalid transaction hash/);
+  assert.throws(() => markPendingJournalBroadcast(intent, "0x" + "g".repeat(64)), /invalid transaction hash/);
+  assert.throws(() => markPendingJournalBroadcast(intent, "0x" + "1".repeat(63)), /invalid transaction hash/);
+  assert.throws(() => markPendingJournalBroadcast(intent, "0x" + "1".repeat(65)), /invalid transaction hash/);
+});
+
+test("Pending journal: exact 32-byte broadcast tx hash accepted", () => {
+  const intent = createPendingJournalIntent({
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    rpcHost: "studio-dev.genlayer.com",
+    deployerAddress: "0x1111111111111111111111111111111111111111",
+    sourceCommit: "b2a31b9d5450e8dd131ff792d66e5f8d88a63809",
+    contractSourceSha256: "aabbccdd11223344aabbccdd11223344aabbccdd11223344aabbccdd11223344",
+  });
+
+  const validLower = "0x" + "a".repeat(64);
+  const resLower = markPendingJournalBroadcast(intent, validLower);
+  assert.strictEqual(resLower.status, "BROADCAST");
+  assert.strictEqual(resLower.deploymentTxHash, validLower);
+
+  const validMixed = "0x" + "1a2B3c4D".repeat(8);
+  const resMixed = markPendingJournalBroadcast(intent, validMixed);
+  assert.strictEqual(resMixed.status, "BROADCAST");
+  assert.strictEqual(resMixed.deploymentTxHash, validMixed);
+
+  const validZero = "0x" + "0".repeat(64);
+  const resZero = markPendingJournalBroadcast(intent, validZero);
+  assert.strictEqual(resZero.status, "BROADCAST");
+  assert.strictEqual(resZero.deploymentTxHash, validZero);
+});
+
+test("Source gate: dirty scripts/deploy-keychain.mjs blocks the release gate", () => {
+  assert.ok(CRITICAL_RELEASE_FILES.includes("scripts/deploy-keychain.mjs"));
+
+  // Modified
+  const gateMod = checkReleaseSourceGate({
+    headCommit: "0123456789abcdef0123456789abcdef01234567",
+    committedCode: "def foo(): return 1",
+    workingCode: "def foo(): return 1",
+    porcelainStatus: " M scripts/deploy-keychain.mjs\n",
+  });
+  assert.strictEqual(gateMod.passed, false);
+  assert.match(gateMod.issues[0], /Uncommitted changes detected in critical release files/);
+  assert.match(gateMod.issues[0], /scripts\/deploy-keychain\.mjs/);
+
+  // Untracked
+  const gateUntracked = checkReleaseSourceGate({
+    headCommit: "0123456789abcdef0123456789abcdef01234567",
+    committedCode: "def foo(): return 1",
+    workingCode: "def foo(): return 1",
+    porcelainStatus: "?? scripts/deploy-keychain.mjs\n",
+  });
+  assert.strictEqual(gateUntracked.passed, false);
+
+  // Deleted
+  const gateDeleted = checkReleaseSourceGate({
+    headCommit: "0123456789abcdef0123456789abcdef01234567",
+    committedCode: "def foo(): return 1",
+    workingCode: "def foo(): return 1",
+    porcelainStatus: " D scripts/deploy-keychain.mjs\n",
+  });
+  assert.strictEqual(gateDeleted.passed, false);
+});
+
+test("Keychain operator: absent account => keychain readiness BLOCKED and exit 1", async () => {
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return null;
+    },
+    async setPassword() {},
+  };
+
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    runDryRunFn: () => ({ status: 0 }),
+  });
+
+  assert.strictEqual(res.accountExists, false);
+  assert.strictEqual(res.readiness, "BLOCKED");
+  assert.strictEqual(res.ready, false);
+  assert.strictEqual(res.exitCode, 1);
+  assert.ok(res.blockers.some((b) => b.includes("is absent from OS keychain")));
+});
+
+test("Keychain operator: balance lookup failure => BLOCKED and exit 1", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      throw new Error("RPC network timeout after 10000ms");
+    },
+  };
+
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => ({ status: 0 }),
+  });
+
+  assert.strictEqual(res.accountExists, true);
+  assert.strictEqual(res.readiness, "BLOCKED");
+  assert.strictEqual(res.ready, false);
+  assert.strictEqual(res.exitCode, 1);
+  assert.ok(res.blockers.some((b) => b.includes("Balance lookup failed")));
+});
+
+test("Keychain operator: balance below 1 GEN => BLOCKED and exit 1", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 500_000_000_000_000_000n; // 0.5 GEN < 1 GEN
+    },
+  };
+
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => ({ status: 0 }),
+  });
+
+  assert.strictEqual(res.accountExists, true);
+  assert.strictEqual(res.readiness, "BLOCKED");
+  assert.strictEqual(res.ready, false);
+  assert.strictEqual(res.exitCode, 1);
+  assert.ok(res.blockers.some((b) => b.includes("is below 1 GEN target") && b.includes("Funding is required")));
+});
+
+test("Keychain operator: dry-run exit 1 => BLOCKED", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n; // 2 GEN >= 1 GEN
+    },
+  };
+
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => ({ status: 1 }),
+  });
+
+  assert.strictEqual(res.readiness, "BLOCKED");
+  assert.strictEqual(res.ready, false);
+  assert.strictEqual(res.exitCode, 1);
+  assert.ok(res.blockers.some((b) => b.includes("Ordinary deployment dry-run exited with nonzero code 1")));
+});
+
+test("Keychain operator: dry-run spawn error => BLOCKED", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => ({ error: new Error("ENOENT: spawn node ENOENT"), status: null }),
+  });
+
+  assert.strictEqual(res.readiness, "BLOCKED");
+  assert.strictEqual(res.ready, false);
+  assert.strictEqual(res.exitCode, 1);
+  assert.ok(res.blockers.some((b) => b.includes("Ordinary deployment dry-run failed to start")));
+});
+
+test("Keychain operator: dry-run signal termination => BLOCKED", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => ({ signal: "SIGKILL", status: null }),
+  });
+
+  assert.strictEqual(res.readiness, "BLOCKED");
+  assert.strictEqual(res.ready, false);
+  assert.strictEqual(res.exitCode, 1);
+  assert.ok(res.blockers.some((b) => b.includes("terminated by signal: SIGKILL")));
+});
+
+test("Keychain operator: dry-run null status => BLOCKED", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  // Explicit null status
+  const resNull = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => ({ status: null }),
+  });
+  assert.strictEqual(resNull.readiness, "BLOCKED");
+  assert.strictEqual(resNull.exitCode, 1);
+  assert.ok(resNull.blockers.some((b) => b.includes("exit status is null or unavailable")));
+
+  // Injected function returning undefined
+  const resUndef = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => undefined,
+  });
+  assert.strictEqual(resUndef.readiness, "BLOCKED");
+  assert.strictEqual(resUndef.exitCode, 1);
+});
+
+test("Keychain operator: fully funded account plus dry-run exit 0 => READY and exit 0", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 1_000_000_000_000_000_000n; // Exactly 1 GEN
+    },
+  };
+
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    runDryRunFn: () => ({ status: 0 }),
+  });
+
+  assert.strictEqual(res.accountExists, true);
+  assert.strictEqual(res.readiness, "READY");
+  assert.strictEqual(res.ready, true);
+  assert.strictEqual(res.exitCode, 0);
+  assert.strictEqual(res.blockers.length, 0);
+});
+
+test("Keychain operator: deployment spawn error cannot become exit 0", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  await assert.rejects(
+    async () => executeDeployFromKeychain({
+      keytar: mockKeytar,
+      client: mockClient,
+      confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+      spawnFn: () => ({ error: new Error("spawnSync EACCES"), status: null }),
+    }),
+    /Deployment execution failed to spawn/
+  );
+});
+
+test("Keychain operator: deployment null status cannot become exit 0", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  await assert.rejects(
+    async () => executeDeployFromKeychain({
+      keytar: mockKeytar,
+      client: mockClient,
+      confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+      spawnFn: () => ({ status: null }),
+    }),
+    /Deployment execution status is unavailable or null/
+  );
+
+  await assert.rejects(
+    async () => executeDeployFromKeychain({
+      keytar: mockKeytar,
+      client: mockClient,
+      confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+      spawnFn: () => ({ status: undefined }),
+    }),
+    /Deployment execution status is unavailable or null/
+  );
+});
+
+test("Keychain operator: deployment nonzero status is preserved", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  await assert.rejects(
+    async () => executeDeployFromKeychain({
+      keytar: mockKeytar,
+      client: mockClient,
+      confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+      spawnFn: () => ({ status: 7 }),
+    }),
+    (err) => {
+      assert.strictEqual(err.exitCode, 7);
+      assert.match(err.message, /failed with exit code 7/);
+      return true;
+    }
+  );
+});
+
+test("Keychain operator: funding receipt followed by balance below target => failure", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const funderKey = "0x2222222222222222222222222222222222222222222222222222222222222222";
+  const mockKeytar = {
+    async getPassword(service, key) {
+      if (key === DEPLOYER_KEYCHAIN_KEY) return deployerKey;
+      if (key === FUNDER_KEYCHAIN_KEY) return funderKey;
+      return null;
+    },
+  };
+
+  let balanceCallCount = 0;
+  const mockClient = {
+    async getBalance({ address }) {
+      balanceCallCount++;
+      // First call: initial deployer balance = 0
+      if (balanceCallCount === 1) return 0n;
+      // Second call: funder balance = 5 GEN
+      if (balanceCallCount === 2) return 5_000_000_000_000_000_000n;
+      // Third call: re-read deployer balance after funding => only 0.5 GEN (below 1 GEN target)
+      return 500_000_000_000_000_000n;
+    },
+    async sendTransaction() {
+      return "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    },
+    async waitForTransactionReceipt() {
+      return {
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+      };
+    },
+  };
+
+  await assert.rejects(
+    async () => executeFundDeployer({
+      keytar: mockKeytar,
+      client: mockClient,
+      confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+    }),
+    (err) => {
+      assert.match(err.message, /Funding verification failed/);
+      assert.strictEqual(err.deployerAddress, "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A");
+      assert.strictEqual(err.txHash, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      assert.strictEqual(err.verifiedBalance, 500_000_000_000_000_000n);
+      assert.strictEqual(err.targetWei, 1_000_000_000_000_000_000n);
+      return true;
+    }
+  );
+});
+
+test("Keychain operator: funding balance at or above target => success", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const funderKey = "0x2222222222222222222222222222222222222222222222222222222222222222";
+  const mockKeytar = {
+    async getPassword(service, key) {
+      if (key === DEPLOYER_KEYCHAIN_KEY) return deployerKey;
+      if (key === FUNDER_KEYCHAIN_KEY) return funderKey;
+      return null;
+    },
+  };
+
+  let balanceCallCount = 0;
+  const mockClient = {
+    async getBalance({ address }) {
+      balanceCallCount++;
+      if (balanceCallCount === 1) return 0n; // initial
+      if (balanceCallCount === 2) return 5_000_000_000_000_000_000n; // funder
+      return 1_000_000_000_000_000_000n; // re-read => exactly 1 GEN target
+    },
+    async sendTransaction() {
+      return "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    },
+    async waitForTransactionReceipt() {
+      return {
+        statusName: "FINALIZED",
+        txExecutionResultName: "FINISHED_WITH_RETURN",
+      };
+    },
+  };
+
+  const fundRes = await executeFundDeployer({
+    keytar: mockKeytar,
+    client: mockClient,
+    confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+  });
+
+  assert.strictEqual(fundRes.funded, true);
+  assert.strictEqual(fundRes.verifiedBalanceWei, 1_000_000_000_000_000_000n);
+  assert.strictEqual(fundRes.transferredWei, 1_000_000_000_000_000_000n);
 });

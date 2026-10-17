@@ -23,6 +23,17 @@ export const REQUIRED_V2_METHODS = [
   "get_settlement",
 ];
 
+export const TX_HASH_REGEX = /^0x[0-9a-fA-F]{64}$/;
+
+export const CRITICAL_RELEASE_FILES = [
+  "contracts/makewhole.py",
+  "scripts/deploy.mjs",
+  "scripts/deploy-helpers.mjs",
+  "scripts/deploy-keychain.mjs",
+  "package.json",
+  "package-lock.json",
+];
+
 export const REQUIRED_ZERO_ECONOMICS = [
   "pool",
   "locked_bonds",
@@ -470,8 +481,10 @@ export function markPendingJournalBroadcast(pendingIntent, deploymentTxHash, bro
   if (pendingIntent.status !== "INTENT_CREATED") {
     throw new Error(`Cannot transition to BROADCAST from status '${pendingIntent.status}'.`);
   }
-  if (!deploymentTxHash || typeof deploymentTxHash !== "string" || !deploymentTxHash.startsWith("0x")) {
-    throw new Error("Cannot transition to BROADCAST without a valid transaction hash.");
+  if (!deploymentTxHash || typeof deploymentTxHash !== "string" || !TX_HASH_REGEX.test(deploymentTxHash)) {
+    throw new Error(
+      `Cannot transition to BROADCAST: invalid transaction hash '${deploymentTxHash}'. Must be an exact 32-byte 0x-prefixed hex string.`
+    );
   }
   return {
     ...pendingIntent,
