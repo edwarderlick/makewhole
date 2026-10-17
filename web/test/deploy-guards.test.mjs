@@ -9,6 +9,9 @@ import {
   validateFreshContractState,
   updateEnvContent,
   ZERO_ADDRESS,
+  evaluatePreflightReadiness,
+  formatDeploymentPlan,
+  getPreflightExitCode,
 } from "../../scripts/deploy-helpers.mjs";
 
 test("CLI argument parsing: default invocation with no arguments remains dry-run", () => {
@@ -381,4 +384,145 @@ test("Environment update: replaces only target keys, preserves comments, blanks,
   // Target contract address updated in-place
   assert.match(updated, /NEXT_PUBLIC_CONTRACT_ADDRESS=0xNewV2ContractAddress99999999999999999999/);
   assert.doesNotMatch(updated, /0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF/);
+});
+
+test("Preflight readiness: all checks pass => READY", () => {
+  const result = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: true,
+    rpcChainMatched: true,
+    feeEstimatePassed: true,
+  });
+  assert.strictEqual(result.ready, true);
+  assert.strictEqual(result.blockers.length, 0);
+});
+
+test("Preflight readiness: source gate failure => BLOCKED", () => {
+  const result = evaluatePreflightReadiness({
+    sourceGatePassed: false,
+    rpcProbePassed: true,
+    rpcChainMatched: true,
+    feeEstimatePassed: true,
+  });
+  assert.strictEqual(result.ready, false);
+  assert.strictEqual(result.blockers.length, 1);
+  assert.match(result.blockers[0], /source gate/i);
+});
+
+test("Preflight readiness: RPC timeout/failure => BLOCKED", () => {
+  const result = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: false,
+    rpcChainMatched: false,
+    feeEstimatePassed: true,
+  });
+  assert.strictEqual(result.ready, false);
+  assert.match(result.blockers.join(" "), /RPC probe failed or timed out/i);
+});
+
+test("Preflight readiness: chain mismatch => BLOCKED", () => {
+  const result = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: true,
+    rpcChainMatched: false,
+    feeEstimatePassed: true,
+  });
+  assert.strictEqual(result.ready, false);
+  assert.strictEqual(result.blockers.length, 1);
+  assert.match(result.blockers[0], /chain ID does not match/i);
+});
+
+test("Preflight readiness: fee estimation failure => BLOCKED", () => {
+  const result = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: true,
+    rpcChainMatched: true,
+    feeEstimatePassed: false,
+  });
+  assert.strictEqual(result.ready, false);
+  assert.strictEqual(result.blockers.length, 1);
+  assert.match(result.blockers[0], /fee estimation/i);
+});
+
+test("Preflight readiness: multiple failures produce all blocker reasons", () => {
+  const result = evaluatePreflightReadiness({
+    sourceGatePassed: false,
+    rpcProbePassed: false,
+    rpcChainMatched: false,
+    feeEstimatePassed: false,
+  });
+  assert.strictEqual(result.ready, false);
+  assert.strictEqual(result.blockers.length, 4);
+  assert.match(result.blockers[0], /source gate/i);
+  assert.match(result.blockers[1], /RPC probe/i);
+  assert.match(result.blockers[2], /chain ID/i);
+  assert.match(result.blockers[3], /fee estimation/i);
+});
+
+test("Preflight readiness: historical v1 status does not alter required readiness", () => {
+  const v1Failed = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: true,
+    rpcChainMatched: true,
+    feeEstimatePassed: true,
+    historicalV1Passed: false,
+  });
+  assert.strictEqual(v1Failed.ready, true);
+  assert.strictEqual(v1Failed.blockers.length, 0);
+
+  const v1Passed = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: true,
+    rpcChainMatched: true,
+    feeEstimatePassed: true,
+    historicalV1Passed: true,
+  });
+  assert.strictEqual(v1Passed.ready, true);
+  assert.strictEqual(v1Passed.blockers.length, 0);
+});
+
+test("Preflight plan & exit code: blocked readiness sets exit code 1, prints blockers, suppresses execute command", () => {
+  const blocked = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: false,
+    rpcChainMatched: false,
+    feeEstimatePassed: false,
+  });
+  assert.strictEqual(getPreflightExitCode(blocked), 1);
+
+  const plan = formatDeploymentPlan({
+    readiness: blocked,
+    networkName: "GenLayer Studio Next",
+    chainId: 61997,
+    rpcUrl: "https://studio-next.genlayer.com/api",
+    historicalV1Status: "UNREACHABLE (informational only)",
+  });
+
+  assert.match(plan, /Deployment Readiness: BLOCKED/);
+  assert.match(plan, /DO NOT RUN deploy:execute until every required readiness check passes\./);
+  assert.doesNotMatch(plan, /npm run deploy:execute/);
+  assert.match(plan, /Target network RPC probe failed or timed out\./);
+  assert.match(plan, /Deployment transaction fee estimation failed/);
+});
+
+test("Preflight plan & exit code: ready status permits exit 0 and prints deployment command", () => {
+  const ready = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: true,
+    rpcChainMatched: true,
+    feeEstimatePassed: true,
+  });
+  assert.strictEqual(getPreflightExitCode(ready), 0);
+
+  const plan = formatDeploymentPlan({
+    readiness: ready,
+    networkName: "GenLayer Studio Next",
+    chainId: 61997,
+    rpcUrl: "https://studio-next.genlayer.com/api",
+    historicalV1Status: "REACHABLE: 22 methods, 12 jobs",
+  });
+
+  assert.match(plan, /Deployment Readiness: READY/);
+  assert.match(plan, /GENLAYER_PRIVATE_KEY=0x\.\.\. npm run deploy:execute/);
+  assert.doesNotMatch(plan, /DO NOT RUN deploy:execute/);
 });

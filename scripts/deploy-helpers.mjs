@@ -275,3 +275,91 @@ export function atomicWriteFile(filePath, content) {
   writeFileSync(tmpPath, content, "utf8");
   renameSync(tmpPath, filePath);
 }
+
+/**
+ * Evaluates deployment preflight readiness based on 4 independent required gates:
+ * 1. sourceGatePassed (committed source matches working copy and tree is clean)
+ * 2. rpcProbePassed (target RPC reachable and responds to eth_chainId)
+ * 3. rpcChainMatched (target RPC chain ID matches configured network chain ID)
+ * 4. feeEstimatePassed (read-only fee estimation and quote validation succeeded)
+ *
+ * Historical v1 probe status is informational and does not block v2 deployment readiness.
+ */
+export function evaluatePreflightReadiness({
+  sourceGatePassed = false,
+  rpcProbePassed = false,
+  rpcChainMatched = false,
+  feeEstimatePassed = false,
+  historicalV1Passed = true,
+} = {}) {
+  const blockers = [];
+
+  if (!sourceGatePassed) {
+    blockers.push("Release source gate check failed: working contract source does not match committed HEAD or repository is dirty.");
+  }
+
+  if (!rpcProbePassed) {
+    blockers.push("Target network RPC probe failed or timed out.");
+  }
+
+  if (!rpcChainMatched) {
+    blockers.push("Target network RPC chain ID does not match configured chain ID.");
+  }
+
+  if (!feeEstimatePassed) {
+    blockers.push("Deployment transaction fee estimation failed or fee quote validation failed.");
+  }
+
+  return {
+    ready: blockers.length === 0,
+    blockers,
+    historicalV1Passed: Boolean(historicalV1Passed),
+  };
+}
+
+/**
+ * Returns 0 if preflight readiness is READY, or 1 if BLOCKED.
+ */
+export function getPreflightExitCode(readiness) {
+  return readiness && readiness.ready ? 0 : 1;
+}
+
+/**
+ * Formats the final deployment plan banner for dry-run preflight.
+ */
+export function formatDeploymentPlan({
+  readiness,
+  networkName,
+  chainId,
+  rpcUrl,
+  historicalV1Status,
+}) {
+  const lines = [];
+  lines.push("\n----------------------------------------------------------------------");
+  lines.push("DEPLOYMENT PLAN (READ-ONLY PREFLIGHT):");
+  lines.push("1. Contract: Makewhole (v2 with 1:1 bond reservation and restitution economics)");
+  lines.push(`2. Target Network: ${networkName} (${chainId})`);
+  lines.push(`3. Target RPC: ${rpcUrl}`);
+  lines.push("4. Status: READ-ONLY DRY-RUN COMPLETE. No contract was deployed.");
+  lines.push("   No transaction was signed or submitted to any network.");
+  if (historicalV1Status) {
+    lines.push(`5. Historical v1 Status: ${historicalV1Status}`);
+  }
+
+  lines.push("");
+  if (readiness && readiness.ready) {
+    lines.push("Deployment Readiness: READY");
+    lines.push("   To execute real deployment, an authorized operator must run:");
+    lines.push("   GENLAYER_PRIVATE_KEY=0x... npm run deploy:execute [--update-env]");
+  } else {
+    lines.push("Deployment Readiness: BLOCKED");
+    if (readiness && Array.isArray(readiness.blockers) && readiness.blockers.length > 0) {
+      lines.push("   Blockers:");
+      readiness.blockers.forEach((b) => lines.push(`   - ${b}`));
+    }
+    lines.push("");
+    lines.push("   DO NOT RUN deploy:execute until every required readiness check passes.");
+  }
+  lines.push("----------------------------------------------------------------------\n");
+  return lines.join("\n");
+}

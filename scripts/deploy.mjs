@@ -14,6 +14,9 @@ import {
   validateFreshContractState,
   updateEnvContent,
   atomicWriteFile,
+  evaluatePreflightReadiness,
+  formatDeploymentPlan,
+  getPreflightExitCode,
 } from "./deploy-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -99,29 +102,61 @@ function getViemVersion() {
   return "unknown";
 }
 
-async function probeRpcEndpoint(rpcUrl, expectedChainId) {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function probeRpcEndpoint(rpcUrl, expectedChainId, timeoutMs = 8000) {
   try {
     const res = await fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       return { ok: false, error: `HTTP ${res.status} ${res.statusText}` };
     }
     const data = await res.json();
+    if (!data || typeof data !== "object" || data.error) {
+      const errMsg = data?.error?.message || (typeof data?.error === "string" ? data.error : "Malformed JSON-RPC response");
+      return { ok: false, error: `RPC error: ${errMsg}` };
+    }
     const hexChainId = data?.result;
-    const decChainId = hexChainId ? parseInt(hexChainId, 16) : null;
+    if (typeof hexChainId !== "string" && typeof hexChainId !== "number") {
+      return { ok: false, error: `Malformed chainId in RPC response: ${JSON.stringify(hexChainId)}` };
+    }
+    const decChainId = typeof hexChainId === "number"
+      ? hexChainId
+      : (typeof hexChainId === "string" && hexChainId.startsWith("0x") ? parseInt(hexChainId, 16) : parseInt(hexChainId, 10));
+    if (!Number.isSafeInteger(decChainId) || decChainId <= 0) {
+      return { ok: false, error: `Invalid chainId parsed from RPC response: ${hexChainId}` };
+    }
     return {
       ok: true,
-      hexChainId,
+      hexChainId: typeof hexChainId === "string" ? hexChainId : `0x${hexChainId.toString(16)}`,
       decChainId,
       matches: decChainId === expectedChainId,
     };
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+async function probeRpcEndpointWithRetry(rpcUrl, expectedChainId, maxAttempts = 3, timeoutMs = 8000) {
+  let lastResult = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      console.log(`[RETRY ${attempt}/${maxAttempts}] Retrying RPC identity probe to ${rpcUrl}...`);
+    }
+    const res = await probeRpcEndpoint(rpcUrl, expectedChainId, timeoutMs);
+    lastResult = res;
+    if (res.ok && res.matches) {
+      return res;
+    }
+    if (attempt < maxAttempts) {
+      await sleep(1000);
+    }
+  }
+  return lastResult;
 }
 
 async function probeHistoricalContract(client, v1Address) {
@@ -145,6 +180,24 @@ async function probeHistoricalContract(client, v1Address) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+async function probeHistoricalContractWithRetry(client, v1Address, maxAttempts = 2) {
+  let lastResult = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      console.log(`[RETRY ${attempt}/${maxAttempts}] Retrying historical v1 probe (${v1Address})...`);
+    }
+    const res = await probeHistoricalContract(client, v1Address);
+    lastResult = res;
+    if (res.ok) {
+      return res;
+    }
+    if (attempt < maxAttempts) {
+      await sleep(1000);
+    }
+  }
+  return lastResult;
 }
 
 async function verifyDeployedContract(client, address) {
@@ -267,35 +320,43 @@ async function main() {
       gate.issues.forEach((issue) => console.log(`  - ${issue}`));
     }
 
-    // Read-only RPC Probe
+    // Read-only RPC Probe (at most 3 attempts, bounded 8000ms timeout)
     console.log("\nProbing network connectivity...");
-    const probeRes = await probeRpcEndpoint(rpcUrl, chainId);
-    if (probeRes.ok) {
+    const probeRes = await probeRpcEndpointWithRetry(rpcUrl, chainId, 3, 8000);
+    const rpcProbePassed = Boolean(probeRes?.ok);
+    const rpcChainMatched = Boolean(probeRes?.ok && probeRes?.matches);
+
+    if (rpcProbePassed) {
       console.log(`[PASS] RPC probe to ${rpcUrl} succeeded.`);
       console.log(`       Reported chainId: ${probeRes.hexChainId} (${probeRes.decChainId})`);
-      if (!probeRes.matches) {
-        console.warn(`[WARN] RPC chainId (${probeRes.decChainId}) does not match expected (${chainId})!`);
+      if (!rpcChainMatched) {
+        console.error(`[FAIL] RPC chainId (${probeRes.decChainId}) does not match expected (${chainId})!`);
       }
     } else {
-      console.warn(`[WARN] RPC probe to ${rpcUrl} failed: ${probeRes.error}`);
+      console.error(`[FAIL] RPC probe to ${rpcUrl} failed: ${probeRes?.error || "Unknown error"}`);
     }
 
-    // Historical v1 Contract Probe
+    // Historical v1 Contract Probe (at most 1 retry, informational / warning-only)
+    let historicalV1Status = "SKIPPED";
+    let v1ProbePassed = false;
     if (chainId === 61997) {
       console.log(`\nProbing historical v1 contract (${HISTORICAL_V1_CONTRACT})...`);
       const client = createClient({
         chain: network.chain,
         endpoint: rpcUrl,
       });
-      const v1Probe = await probeHistoricalContract(client, HISTORICAL_V1_CONTRACT);
+      const v1Probe = await probeHistoricalContractWithRetry(client, HISTORICAL_V1_CONTRACT, 2);
       if (v1Probe.ok) {
+        v1ProbePassed = true;
+        historicalV1Status = `REACHABLE: ${v1Probe.methodCount} methods, ${v1Probe.jobCount} jobs indexed`;
         console.log(`[PASS] Historical v1 contract reachable: ${v1Probe.methodCount} methods, ${v1Probe.jobCount} jobs indexed.`);
       } else {
+        historicalV1Status = `UNREACHABLE (${v1Probe.error}) - informational only`;
         console.warn(`[WARN] Historical v1 contract probe failed: ${v1Probe.error}`);
       }
     }
 
-    // Fee Estimation (Read-Only)
+    // Fee Estimation (Read-Only, at most 2 attempts)
     console.log("\nEstimating deployment transaction fees (read-only SDK call)...");
     const client = createClient({
       chain: network.chain,
@@ -307,42 +368,64 @@ async function main() {
       leaderOnly: false,
     };
 
-    try {
-      const raw = await client.estimateTransactionFees(estParams);
-      const quoteData = raw?.fees ?? raw?.data?.fees ?? raw;
-      const validated = validateFeeQuote(quoteData);
+    let feeEstimatePassed = false;
+    let validatedFees = null;
+    let feeEstimateError = null;
 
-      console.log("[PASS] Fee estimation succeeded.");
-      console.log(`       Estimated Fee Value : ${validated.feeValue.toString()} wei`);
-      if (validated.distribution) {
-        const rotationsStr = Array.isArray(validated.distribution.rotations)
-          ? `[${validated.distribution.rotations.map((r) => r.toString()).join(", ")}]`
-          : String(validated.distribution.rotations);
-        console.log(`       Leader Allocation   : ${validated.distribution.leaderTimeunitsAllocation}`);
-        console.log(`       Validator Allocation: ${validated.distribution.validatorTimeunitsAllocation}`);
-        console.log(`       Rotations           : ${rotationsStr}`);
-        console.log(`       Execution Budget    : ${validated.distribution.executionBudgetPerRound}`);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (attempt > 1) {
+        console.log(`[RETRY ${attempt}/2] Retrying fee estimation...`);
       }
-    } catch (e) {
-      console.warn(`[WARN] Fee estimation failed: ${e.message}`);
+      try {
+        const raw = await client.estimateTransactionFees(estParams);
+        const quoteData = raw?.fees ?? raw?.data?.fees ?? raw;
+        validatedFees = validateFeeQuote(quoteData);
+        feeEstimatePassed = true;
+        break;
+      } catch (e) {
+        feeEstimateError = e.message;
+        if (attempt < 2) {
+          await sleep(1000);
+        }
+      }
     }
 
-    console.log("\n----------------------------------------------------------------------");
-    console.log("DEPLOYMENT PLAN (READ-ONLY PREFLIGHT):");
-    console.log("1. Contract: Makewhole (v2 with 1:1 bond reservation and restitution economics)");
-    console.log(`2. Target Network: ${network.name} (${chainId})`);
-    console.log(`3. Target RPC: ${rpcUrl}`);
-    console.log("4. Status: READ-ONLY DRY-RUN COMPLETE. No contract was deployed.");
-    console.log("   No transaction was signed or submitted to any network.");
-
-    if (!gate.passed) {
-      console.log("\n[WARNING] Real deployment is prohibited until all release gate issues are resolved.");
-      process.exitCode = 1;
+    if (feeEstimatePassed && validatedFees) {
+      console.log("[PASS] Fee estimation succeeded.");
+      console.log(`       Estimated Fee Value : ${validatedFees.feeValue.toString()} wei`);
+      if (validatedFees.distribution) {
+        const rotationsStr = Array.isArray(validatedFees.distribution.rotations)
+          ? `[${validatedFees.distribution.rotations.map((r) => r.toString()).join(", ")}]`
+          : String(validatedFees.distribution.rotations);
+        console.log(`       Leader Allocation   : ${validatedFees.distribution.leaderTimeunitsAllocation}`);
+        console.log(`       Validator Allocation: ${validatedFees.distribution.validatorTimeunitsAllocation}`);
+        console.log(`       Rotations           : ${rotationsStr}`);
+        console.log(`       Execution Budget    : ${validatedFees.distribution.executionBudgetPerRound}`);
+      }
     } else {
-      console.log("   To execute real deployment, an authorized operator must run:");
-      console.log("   GENLAYER_PRIVATE_KEY=0x... npm run deploy:execute [--update-env]");
+      console.error(`[FAIL] Fee estimation failed: ${feeEstimateError}`);
     }
-    console.log("----------------------------------------------------------------------\n");
+
+    // Evaluate overall readiness fail-closed across all required gates
+    const readiness = evaluatePreflightReadiness({
+      sourceGatePassed: gate.passed,
+      rpcProbePassed,
+      rpcChainMatched,
+      feeEstimatePassed,
+      historicalV1Passed: v1ProbePassed,
+    });
+
+    console.log(
+      formatDeploymentPlan({
+        readiness,
+        networkName: network.name,
+        chainId,
+        rpcUrl,
+        historicalV1Status,
+      })
+    );
+
+    process.exitCode = getPreflightExitCode(readiness);
     return;
   }
 
