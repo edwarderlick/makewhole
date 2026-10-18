@@ -1,0 +1,15 @@
+{
+  "project": "makewhole",
+  "version": "v2.1",
+  "chainId": 61997,
+  "networkName": "GenLayer Studio-dev",
+  "rpcHost": "studio-dev.genlayer.com",
+  "explorerBaseUrl": "https://explorer-studio-dev.genlayer.com",
+  "contractAddress": "0xC8D8B843F02A3903C18C1373652c4356900b1402",
+  "deploymentTxHash": "0x3c4e7325f63e370b16fa4ed0377b50abfa76baaa1b042d7d6b964811137ade61",
+  "deployedAtUtc": "2026-10-18T13:55:25.983Z",
+  "sourceCommit": "3fd4630d6e63b58f925624814519622de0e9c40d",
+  "contractSourceSha256": "b6fc29958cc2efa5cb340fcfb2b4b932f72841ba1dcc27937609583b6ac6f1b1",
+  "executionResult": "FINISHED_WITH_RETURN",
+  "sdkVersion": "2.0.0-rc.1"
+}
