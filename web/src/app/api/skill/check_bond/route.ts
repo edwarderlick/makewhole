@@ -1,47 +1,49 @@
 import { NextResponse } from "next/server";
-import { createPublicClient, http, parseAbi } from "viem";
+import { parseAbi } from "viem";
 import {
+  createCheckBondClient,
   mapContractCheckBondResult,
   mapRpcReadError,
   validateCheckBondRequest,
 } from "./core";
-
-const TARGET_CHAIN_ID = 61997;
-const TARGET_RPC = "https://studio-next.genlayer.com/api";
-const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "").trim() as `0x${string}`;
+import { getCanonicalNetworkConfig } from "../../../../lib/network";
 
 const ABI = parseAbi([
   "function get_job(string job_id) returns (string)",
   "function check_bond(string job_id) returns (string)",
 ]);
 
-const publicClient = createPublicClient({
-  chain: {
-    id: TARGET_CHAIN_ID,
-    name: "GenLayer Studio Next",
-    nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-    rpcUrls: { default: { http: [TARGET_RPC] } },
-  },
-  transport: http(),
-});
+let cachedClient: ReturnType<typeof createCheckBondClient> | null = null;
+let cachedRpcUrl: string | null = null;
+
+function getPublicClient() {
+  const config = getCanonicalNetworkConfig();
+  if (!cachedClient || cachedRpcUrl !== config.rpcUrl) {
+    cachedRpcUrl = config.rpcUrl;
+    cachedClient = createCheckBondClient();
+  }
+  return cachedClient;
+}
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const rawJobId = searchParams.get("job");
+    const contractAddress = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "").trim() as `0x${string}`;
 
-    const validated = validateCheckBondRequest(CONTRACT_ADDRESS, rawJobId);
+    const validated = validateCheckBondRequest(contractAddress, rawJobId);
     if (!validated.ok) {
       return NextResponse.json(validated.failure.body, {
         status: validated.failure.status,
       });
     }
 
-    const { jobId, contractAddress } = validated;
+    const { jobId, contractAddress: validAddress } = validated;
 
     try {
-      const res = await publicClient.readContract({
-        address: contractAddress,
+      const client = getPublicClient();
+      const res = await client.readContract({
+        address: validAddress,
         abi: ABI,
         functionName: "check_bond",
         args: [jobId],

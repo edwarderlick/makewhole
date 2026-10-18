@@ -14,7 +14,11 @@ if (!PK_A || !PK_B || !PK_C) {
   process.exit(1);
 }
 
-const rpcUrl = "https://studio-next.genlayer.com/api";
+const rawRpcUrl =
+  process.env.GENLAYER_STUDIO_URL ||
+  process.env.NEXT_PUBLIC_STUDIO_RPC ||
+  "https://studio-dev.genlayer.com/api";
+const rpcUrl = rawRpcUrl.trim().replace(/\/+$/, "");
 
 const clientA = createClient({ chain: studioDevnet, account: PK_A, endpoint: rpcUrl });
 const clientB = createClient({ chain: studioDevnet, account: PK_B, endpoint: rpcUrl });

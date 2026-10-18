@@ -1,3 +1,6 @@
+import { createPublicClient, http } from "viem";
+import { getCanonicalNetworkConfig } from "../../../../lib/network";
+
 export const EXACT_ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/i;
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -419,4 +422,17 @@ export function mapRpcReadError(jobId?: string): CheckBondFailureResult {
       reason: "Failed to read bond status from contract",
     },
   };
+}
+
+export function createCheckBondClient() {
+  const config = getCanonicalNetworkConfig();
+  return createPublicClient({
+    chain: {
+      id: config.chainId,
+      name: config.networkName,
+      nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+      rpcUrls: { default: { http: [config.rpcUrl] } },
+    },
+    transport: http(config.rpcUrl),
+  });
 }
