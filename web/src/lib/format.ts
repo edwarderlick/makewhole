@@ -24,20 +24,54 @@ export function formatGen(value: bigint | number | string | null | undefined, di
   return `${neg ? "-" : ""}${whole.toString()}.${fracStr}`;
 }
 
+export const MAX_U256 = (1n << 256n) - 1n;
+
+export function tryParseGen(input: string): bigint | null {
+  if (typeof input !== "string") return null;
+  const s = input.trim();
+  if (!s) return null;
+
+  // Ordinary decimal notation only (no leading +/- signs, no scientific notation, no hex, no multiple dots)
+  if (!/^\d+(\.\d+)?$/.test(s)) {
+    return null;
+  }
+
+  const [wholeStr, fracStr = ""] = s.split(".");
+  // Reject more than 18 fractional digits (do not silently truncate)
+  if (fracStr.length > 18) {
+    return null;
+  }
+
+  try {
+    const paddedFrac = fracStr.padEnd(18, "0");
+    const wholeVal = BigInt(wholeStr);
+    const fracVal = BigInt(paddedFrac);
+    const total = wholeVal * ATTO + fracVal;
+    if (total < 0n || total > MAX_U256) {
+      return null;
+    }
+    return total;
+  } catch {
+    return null;
+  }
+}
+
 export function parseGen(input: string): bigint {
-  const t = input.trim();
-  if (!t) return 0n;
-  const [w, f = ""] = t.split(".");
-  const frac = (f + "000000000000000000").slice(0, 18);
-  return BigInt(w || "0") * ATTO + BigInt(frac || "0");
+  const parsed = tryParseGen(input);
+  if (parsed === null) {
+    throw new Error(
+      `Invalid GEN amount: "${input}". Expected non-negative decimal string with at most 18 decimal places fitting unsigned u256.`
+    );
+  }
+  return parsed;
 }
 
 export function explorerTx(hash: string) {
-  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-Studio Next.genlayer.com";
+  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-studio-dev.genlayer.com";
   return `${base}/tx/${hash}`;
 }
 
 export function explorerAddr(addr: string) {
-  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-Studio Next.genlayer.com";
+  const base = process.env.NEXT_PUBLIC_STUDIO_EXPLORER || "https://explorer-studio-dev.genlayer.com";
   return `${base}/address/${addr}`;
 }

@@ -10,6 +10,7 @@ import { TARGET_CHAIN_ID, TARGET_RPC, chainLabel } from "@/lib/network";
 const NAV = [
   { href: "/how", label: "How" },
   { href: "/create", label: "Create Job" },
+  { href: "/vault", label: "Vault" },
   { href: "/pipeline", label: "Pipeline" },
   { href: "/browse", label: "Browse" },
   { href: "/proofs", label: "Proofs" },

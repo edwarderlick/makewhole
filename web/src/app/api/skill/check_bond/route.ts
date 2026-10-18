@@ -1,77 +1,63 @@
 import { NextResponse } from "next/server";
-import { createPublicClient, http, parseAbi } from "viem";
-
-const TARGET_CHAIN_ID = 61997;
-const TARGET_RPC = "https://studio-next.genlayer.com/api";
-const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "").trim() as `0x${string}`;
+import { parseAbi } from "viem";
+import {
+  createCheckBondClient,
+  mapContractCheckBondResult,
+  mapRpcReadError,
+  validateCheckBondRequest,
+} from "./core";
+import { getCanonicalNetworkConfig } from "../../../../lib/network";
 
 const ABI = parseAbi([
   "function get_job(string job_id) returns (string)",
   "function check_bond(string job_id) returns (string)",
 ]);
 
-const publicClient = createPublicClient({
-  chain: {
-    id: TARGET_CHAIN_ID,
-    name: "GenLayer Studio Next",
-    nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-    rpcUrls: { default: { http: [TARGET_RPC] } },
-  },
-  transport: http(),
-});
+let cachedClient: ReturnType<typeof createCheckBondClient> | null = null;
+let cachedRpcUrl: string | null = null;
+
+function getPublicClient() {
+  const config = getCanonicalNetworkConfig();
+  if (!cachedClient || cachedRpcUrl !== config.rpcUrl) {
+    cachedRpcUrl = config.rpcUrl;
+    cachedClient = createCheckBondClient();
+  }
+  return cachedClient;
+}
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const jobId = searchParams.get("job");
+    const rawJobId = searchParams.get("job");
+    const contractAddress = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "").trim() as `0x${string}`;
 
-    if (!CONTRACT_ADDRESS || CONTRACT_ADDRESS === "0x") {
-      return NextResponse.json({ bonded: false, reason: "contract not configured" });
+    const validated = validateCheckBondRequest(contractAddress, rawJobId);
+    if (!validated.ok) {
+      return NextResponse.json(validated.failure.body, {
+        status: validated.failure.status,
+      });
     }
 
-    if (!jobId) {
-      return NextResponse.json({ bonded: false, reason: "Missing job ID" });
-    }
+    const { jobId, contractAddress: validAddress } = validated;
 
     try {
-      const res = await publicClient.readContract({
-        address: CONTRACT_ADDRESS,
+      const client = getPublicClient();
+      const res = await client.readContract({
+        address: validAddress,
         abi: ABI,
         functionName: "check_bond",
         args: [jobId],
       });
-      const data = JSON.parse(res as string);
-      
-      // We expect the contract to return bonded: true/false.
-      // E.g., { bonded: true, bond: 1000, pay_c: 1000, state: 2, writer: "0x..." }
-      if (!data.bonded) {
-         return NextResponse.json({ bonded: false, reason: "Writer is not bonded or job state invalid" });
-      }
 
-      return NextResponse.json({
-        bonded: true,
-        job_id: jobId,
-        writer: data.writer,
-        pay_c: data.pay_c,
-        bond: data.bond,
-        state: data.state,
-      });
-    } catch (e: any) {
-      // If the contract is not deployed (returns 0x), viem throws Position 32 out of bounds.
-      // For the hackathon demo, fallback to a mock success response so the agent doesn't fail.
-      if (e.message.includes("Position `32` is out of bounds") || e.message.includes("contract not configured")) {
-        return NextResponse.json({
-          bonded: true,
-          job_id: jobId,
-          writer: "0xDem0Writer00000000000000000000000000000",
-          pay_c: 500,
-          bond: 1000,
-          state: "SETTLED_OK",
-        });
-      }
-      return NextResponse.json({ bonded: false, reason: `RPC check failed: ${e.message}` });
+      const outcome = mapContractCheckBondResult(jobId, res);
+      return NextResponse.json(outcome.body, { status: outcome.status });
+    } catch {
+      // Never mock success, never leak raw exception messages, fail closed with 503
+      const errOutcome = mapRpcReadError(jobId);
+      return NextResponse.json(errOutcome.body, { status: errOutcome.status });
     }
-  } catch (err: any) {
-    return NextResponse.json({ bonded: false, reason: err.message }, { status: 500 });
+  } catch {
+    const fatal = mapRpcReadError();
+    return NextResponse.json(fatal.body, { status: fatal.status });
   }
 }

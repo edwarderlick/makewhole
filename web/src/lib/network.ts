@@ -1,11 +1,94 @@
+export const CANONICAL_CHAIN_ID = 61997;
+export const CANONICAL_CHAIN_HEX = "0xf22d";
+export const CANONICAL_NETWORK_NAME = "GenLayer Studio-dev";
+export const CANONICAL_STUDIO_DEV_RPC = "https://studio-dev.genlayer.com/api";
+export const CANONICAL_STUDIO_DEV_EXPLORER = "https://explorer-studio-dev.genlayer.com";
+
+/**
+ * Normalizes an RPC or Explorer URL:
+ * - Trims leading/trailing whitespace
+ * - Strips harmless trailing slashes
+ */
+export function normalizeUrl(url?: string | null): string {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+  return trimmed.replace(/\/+$/, "");
+}
+
+/**
+ * Resolves the canonical Studio RPC URL according to strict environment precedence:
+ * 1. GENLAYER_STUDIO_URL
+ * 2. NEXT_PUBLIC_STUDIO_RPC
+ * 3. Canonical default: https://studio-dev.genlayer.com/api
+ */
+export function resolveStudioRpcUrl(env: Record<string, string | undefined> = process.env): string {
+  const fromGenlayer = normalizeUrl(env?.GENLAYER_STUDIO_URL);
+  if (fromGenlayer) return fromGenlayer;
+
+  const fromNextPublic = normalizeUrl(env?.NEXT_PUBLIC_STUDIO_RPC);
+  if (fromNextPublic) return fromNextPublic;
+
+  return CANONICAL_STUDIO_DEV_RPC;
+}
+
+/**
+ * Resolves the canonical Studio block explorer URL according to environment precedence:
+ * 1. NEXT_PUBLIC_STUDIO_EXPLORER
+ * 2. Canonical default: https://explorer-studio-dev.genlayer.com
+ */
+export function resolveStudioExplorerUrl(env: Record<string, string | undefined> = process.env): string {
+  const fromNextPublic = normalizeUrl(env?.NEXT_PUBLIC_STUDIO_EXPLORER);
+  if (fromNextPublic) return fromNextPublic;
+
+  return CANONICAL_STUDIO_DEV_EXPLORER;
+}
+
+/**
+ * Extracts the RPC hostname safely from a URL string.
+ */
+export function getRpcHost(rpcUrl: string): string {
+  try {
+    const parsed = new URL(rpcUrl);
+    return parsed.hostname || parsed.host || "studio-dev.genlayer.com";
+  } catch {
+    return "studio-dev.genlayer.com";
+  }
+}
+
+export interface CanonicalNetworkConfig {
+  chainId: number;
+  chainIdHex: string;
+  networkName: string;
+  rpcUrl: string;
+  rpcHost: string;
+  explorerUrl: string;
+}
+
+/**
+ * Returns the effective canonical network configuration.
+ * Server-safe, exposes only public network constants (no secrets).
+ */
+export function getCanonicalNetworkConfig(env: Record<string, string | undefined> = process.env): CanonicalNetworkConfig {
+  const rpcUrl = resolveStudioRpcUrl(env);
+  const explorerUrl = resolveStudioExplorerUrl(env);
+  return {
+    chainId: CANONICAL_CHAIN_ID,
+    chainIdHex: CANONICAL_CHAIN_HEX,
+    networkName: CANONICAL_NETWORK_NAME,
+    rpcUrl,
+    rpcHost: getRpcHost(rpcUrl),
+    explorerUrl,
+  };
+}
+
 export const STUDIO_DEV = {
-  chainIdDec: 61997,
+  chainIdDec: CANONICAL_CHAIN_ID,
   // 61997 = 0xf22d. 0xf21d is 61981 and must not be sent to MetaMask.
-  chainIdHex: "0xf22d",
-  chainName: "GenLayer Studio Next",
+  chainIdHex: CANONICAL_CHAIN_HEX,
+  chainName: CANONICAL_NETWORK_NAME,
   nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-  rpcUrls: ["https://studio-next.genlayer.com/api"],
-  blockExplorerUrls: ["https://explorer-Studio Next.genlayer.com"],
+  rpcUrls: [CANONICAL_STUDIO_DEV_RPC],
+  blockExplorerUrls: [CANONICAL_STUDIO_DEV_EXPLORER],
 } as const;
 
 export const STUDIONET_FALLBACK = {
@@ -17,12 +100,29 @@ export const STUDIONET_FALLBACK = {
   blockExplorerUrls: ["https://explorer-studio.genlayer.com"],
 } as const;
 
-export type TargetChain = typeof STUDIO_DEV | typeof STUDIONET_FALLBACK;
+export interface TargetChain {
+  readonly chainIdDec: number;
+  readonly chainIdHex: string;
+  readonly chainName: string;
+  readonly nativeCurrency: {
+    readonly name: string;
+    readonly symbol: string;
+    readonly decimals: number;
+  };
+  readonly rpcUrls: readonly string[];
+  readonly blockExplorerUrls: readonly string[];
+}
 
 export function targetFromEnv(): TargetChain {
   const id = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "61997");
   if (id === 61999) return STUDIONET_FALLBACK;
-  return STUDIO_DEV;
+  const resolvedRpc = resolveStudioRpcUrl();
+  const resolvedExplorer = resolveStudioExplorerUrl();
+  return {
+    ...STUDIO_DEV,
+    rpcUrls: [resolvedRpc],
+    blockExplorerUrls: [resolvedExplorer],
+  };
 }
 
 export const TARGET = targetFromEnv();

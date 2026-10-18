@@ -1,92 +1,693 @@
 import { createClient } from "genlayer-js";
-import { studioDevnet } from "genlayer-js/chains";
+import { studioDevnet, studionet } from "genlayer-js/chains";
 import { privateKeyToAccount } from "viem/accounts";
-import { readFileSync, existsSync, writeFileSync } from "fs";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { readFileSync, existsSync, unlinkSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+
+import {
+  parseDeploymentArgs,
+  checkReleaseSourceGate,
+  validateFeeQuote,
+  validateDeployReceipt,
+  validateFreshContractState,
+  updateEnvContent,
+  atomicWriteFile,
+  evaluatePreflightReadiness,
+  formatDeploymentPlan,
+  getPreflightExitCode,
+  validateDeployerBalance,
+  assertNoDeploymentCollisions,
+  createPendingJournalIntent,
+  markPendingJournalBroadcast,
+  RECEIPT_FILENAME,
+  PENDING_JOURNAL_FILENAME,
+  CRITICAL_RELEASE_FILES,
+  resolveReleaseConfig,
+  DEFAULT_RELEASE,
+  DEPLOYMENT_RELEASES,
+} from "./deploy-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const contractFile = resolve(root, "contracts/makewhole.py");
 const envLocal = resolve(root, "web/.env.local");
+const deploymentsDir = resolve(root, "deployments");
 
-async function deploy() {
-  const account = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
-  
-  const client = createClient({
+const HISTORICAL_V1_CONTRACT = "0x04A81C6B4AC43Ee9cea73B203d9Ed9ca0b89F0EF";
+
+const SUPPORTED_CHAINS = {
+  61997: {
+    name: "GenLayer Studio-dev",
     chain: studioDevnet,
-    account: account,
-    endpoint: "https://studio-next.genlayer.com/api"
-  });
+    defaultRpcUrl: "https://studio-dev.genlayer.com/api",
+    defaultExplorerUrl: "https://explorer-studio-dev.genlayer.com",
+  },
+  61999: {
+    name: "GenLayer Studionet",
+    chain: studionet,
+    defaultRpcUrl: "https://studio.genlayer.com/api",
+    defaultExplorerUrl: "https://explorer.genlayer.com",
+  },
+};
 
-  const code = readFileSync(contractFile, "utf8");
-
-  console.log("Estimating fees...");
-  const estParams = {
-    code,
-    args: [],
-    leaderOnly: false
-  };
-
-  let quote;
+function getGitReleaseStatus(isDryRun = false) {
+  let headCommit = null;
   try {
-     const raw = await client.estimateTransactionFees(estParams);
-     quote = raw?.fees ?? raw?.data?.fees ?? raw;
-     if (!quote?.distribution) {
-       // fallback, try with rotations
-       const raw2 = await client.estimateTransactionFees({ ...estParams, rotations: [0n] });
-       quote = raw2?.fees ?? raw2?.data?.fees ?? raw2;
-     }
-  } catch(e) {
-     console.error("estimateTransactionFees failed:", e);
-     process.exit(1);
+    headCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  } catch {
+    headCommit = null;
   }
 
-  let feeValue = quote.feeValue ?? quote.fee_value;
-  if (!feeValue || feeValue === 1n || feeValue === "1") {
-      feeValue = "100000000000000000"; // non 1n
-  }
-  
-  const feesObj = {
-    distribution: quote.distribution,
-    feeValue: feeValue
-  };
-  
-  if (Array.isArray(quote.messageAllocations) && quote.messageAllocations.length > 0) {
-      feesObj.messageAllocations = quote.messageAllocations;
+  let committedCode = null;
+  try {
+    committedCode = execFileSync("git", ["show", "HEAD:contracts/makewhole.py"], { cwd: root, encoding: "utf8" });
+  } catch {
+    committedCode = null;
   }
 
-  console.log("Fees obj:", feesObj);
-  
-  console.log("Deploying contract...");
-  const txHash = await client.deployContract({
-    code,
-    args: [],
-    leaderOnly: false,
-    fees: feesObj
-  });
-  
-  console.log("Tx sent:", txHash, "Waiting for receipt...");
-  const receipt = await client.waitForTransactionReceipt({ hash: txHash, waitUntil: "finalized", retries: 60 });
-  const execRes = receipt.txExecutionResultName || receipt.executionResult || receipt?.data?.execution_result || receipt?.execution_data?.execution_result;
-  if (execRes !== "SUCCESS" && execRes !== "FINISHED_WITH_RETURN") {
-    console.error("Deploy failed:", receipt);
-    process.exit(1);
+  let porcelainStatus = "";
+  try {
+    const filesToCheck = isDryRun ? ["contracts/makewhole.py"] : CRITICAL_RELEASE_FILES;
+    porcelainStatus = execFileSync("git", ["status", "--porcelain", "--", ...filesToCheck], {
+      cwd: root,
+      encoding: "utf8",
+    });
+  } catch {
+    porcelainStatus = "ERROR: Failed to run git status";
   }
-  
-  const address = receipt.contractAddress;
-  console.log("Deployed", address);
 
-  const lines = existsSync(envLocal) ? readFileSync(envLocal, "utf8").split(/\r?\n/) : [];
-  const next = [
-    `NEXT_PUBLIC_CONTRACT_ADDRESS=${address}`,
-    "NEXT_PUBLIC_CHAIN_ID=61997",
-    "NEXT_PUBLIC_STUDIO_RPC=https://studio-next.genlayer.com/api",
-    "NEXT_PUBLIC_STUDIO_EXPLORER=https://explorer-studio-dev.genlayer.com",
-    "GENLAYER_STUDIO_URL=https://studio-next.genlayer.com/api",
-  ];
-  const kept = lines.filter((l) => l && !l.startsWith("NEXT_PUBLIC_") && !l.startsWith("GENLAYER_STUDIO_URL"));
-  writeFileSync(envLocal, [...next, ...kept, ""].join("\n"));
-  console.log("Wrote web/.env.local");
+  return { headCommit, committedCode, porcelainStatus };
 }
 
-deploy().catch(console.error);
+function getSdkVersion() {
+  try {
+    const pkgPath = resolve(root, "node_modules/genlayer-js/package.json");
+    if (existsSync(pkgPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+      return pkg.version || "unknown";
+    }
+  } catch {
+    // fallback
+  }
+  return "2.0.0-rc.1";
+}
+
+function getViemVersion() {
+  try {
+    const pkgPath = resolve(root, "node_modules/viem/package.json");
+    if (existsSync(pkgPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+      return pkg.version || "unknown";
+    }
+  } catch {
+    // fallback
+  }
+  return "unknown";
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function probeRpcEndpoint(rpcUrl, expectedChainId, timeoutMs = 8000) {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status} ${res.statusText}` };
+    }
+    const data = await res.json();
+    if (!data || typeof data !== "object" || data.error) {
+      const errMsg = data?.error?.message || (typeof data?.error === "string" ? data.error : "Malformed JSON-RPC response");
+      return { ok: false, error: `RPC error: ${errMsg}` };
+    }
+    const hexChainId = data?.result;
+    if (typeof hexChainId !== "string" && typeof hexChainId !== "number") {
+      return { ok: false, error: `Malformed chainId in RPC response: ${JSON.stringify(hexChainId)}` };
+    }
+    const decChainId = typeof hexChainId === "number"
+      ? hexChainId
+      : (typeof hexChainId === "string" && hexChainId.startsWith("0x") ? parseInt(hexChainId, 16) : parseInt(hexChainId, 10));
+    if (!Number.isSafeInteger(decChainId) || decChainId <= 0) {
+      return { ok: false, error: `Invalid chainId parsed from RPC response: ${hexChainId}` };
+    }
+    return {
+      ok: true,
+      hexChainId: typeof hexChainId === "string" ? hexChainId : `0x${hexChainId.toString(16)}`,
+      decChainId,
+      matches: decChainId === expectedChainId,
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function probeRpcEndpointWithRetry(rpcUrl, expectedChainId, maxAttempts = 3, timeoutMs = 8000) {
+  let lastResult = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      console.log(`[RETRY ${attempt}/${maxAttempts}] Retrying RPC identity probe to ${rpcUrl}...`);
+    }
+    const res = await probeRpcEndpoint(rpcUrl, expectedChainId, timeoutMs);
+    lastResult = res;
+    if (res.ok && res.matches) {
+      return res;
+    }
+    if (attempt < maxAttempts) {
+      await sleep(1000);
+    }
+  }
+  return lastResult;
+}
+
+async function probeHistoricalContract(client, v1Address) {
+  try {
+    const schema = await client.getContractSchema(v1Address);
+    const methodCount = Object.keys(schema?.methods || {}).length;
+    let jobCount = 0;
+    try {
+      const ids = await client.readContract({
+        address: v1Address,
+        functionName: "list_ids",
+        args: [],
+      });
+      if (Array.isArray(ids)) {
+        jobCount = ids.length;
+      }
+    } catch {
+      // non-fatal view
+    }
+    return { ok: true, methodCount, jobCount };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function probeHistoricalContractWithRetry(client, v1Address, maxAttempts = 2) {
+  let lastResult = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      console.log(`[RETRY ${attempt}/${maxAttempts}] Retrying historical v1 probe (${v1Address})...`);
+    }
+    const res = await probeHistoricalContract(client, v1Address);
+    lastResult = res;
+    if (res.ok) {
+      return res;
+    }
+    if (attempt < maxAttempts) {
+      await sleep(1000);
+    }
+  }
+  return lastResult;
+}
+
+async function verifyDeployedContract(client, address) {
+  const schema = await client.getContractSchema(address);
+  const ids = await client.readContract({
+    address,
+    functionName: "list_ids",
+    args: [],
+  });
+  const economics = await client.readContract({
+    address,
+    functionName: "get_economics",
+    args: [],
+  });
+  validateFreshContractState({ schema, ids, economics });
+}
+
+async function main() {
+  // 1. Strict CLI argument parsing
+  let parsedArgs;
+  try {
+    parsedArgs = parseDeploymentArgs(process.argv.slice(2));
+  } catch (err) {
+    console.error(`CLI Argument Error: ${err.message}`);
+    process.exit(1);
+  }
+
+  const { mode, updateEnv, release } = parsedArgs;
+  const releaseConfig = resolveReleaseConfig(release);
+  const isExecute = mode === "execute";
+  const isDryRun = mode === "dry-run";
+  const receiptFile = resolve(deploymentsDir, releaseConfig.receiptFilename);
+  const pendingFile = resolve(deploymentsDir, releaseConfig.pendingFilename);
+
+  // 2. Resolve Network & Chain Configuration
+  const rawChainId = process.env.GENLAYER_CHAIN_ID || "61997";
+  const chainId = parseInt(rawChainId, 10);
+  const network = SUPPORTED_CHAINS[chainId];
+
+  if (!network) {
+    console.error(`Error: Unsupported GENLAYER_CHAIN_ID '${rawChainId}'.`);
+    console.error(`Supported chain IDs: ${Object.keys(SUPPORTED_CHAINS).join(", ")}`);
+    process.exit(1);
+  }
+
+  const rpcUrl = process.env.GENLAYER_RPC_URL || network.defaultRpcUrl;
+  const explorerUrl = process.env.GENLAYER_EXPLORER_URL || network.defaultExplorerUrl;
+
+  // Enforce AGENTS.md rule: Don't point Studionet (61999) at studio-dev / studio-next RPC
+  if (chainId === 61999 && (rpcUrl.includes("studio-dev") || rpcUrl.includes("studio-next"))) {
+    console.error("Error: Misconfigured network. Cannot point Studionet (chain 61999) at Studio-dev RPC.");
+    process.exit(1);
+  }
+
+  // 3. Inspect working contract source
+  if (!existsSync(contractFile)) {
+    console.error(`Error: Contract source not found at ${contractFile}`);
+    process.exit(1);
+  }
+  const workingCode = readFileSync(contractFile, "utf8");
+
+  // 4. Committed-source reproducibility check
+  const gitStatus = getGitReleaseStatus(isDryRun);
+  const gate = checkReleaseSourceGate({
+    headCommit: gitStatus.headCommit,
+    committedCode: gitStatus.committedCode,
+    workingCode,
+    porcelainStatus: gitStatus.porcelainStatus,
+  });
+
+  const sdkVersion = getSdkVersion();
+  const viemVersion = getViemVersion();
+
+  // Validate Private Key ONLY if executing (internal interface for keychain wrapper)
+  let account = null;
+  if (isExecute) {
+    const rawKey = process.env.GENLAYER_PRIVATE_KEY;
+    if (!rawKey) {
+      console.error("Error: --execute requires the GENLAYER_PRIVATE_KEY environment variable.");
+      console.error("No fallback key is permitted. Deployment aborted.");
+      process.exit(1);
+    }
+    if (!/^0x[0-9a-fA-F]{64}$/.test(rawKey)) {
+      console.error("Error: GENLAYER_PRIVATE_KEY is malformed (expected /^0x[0-9a-fA-F]{64}$/).");
+      console.error("Never provide an insecure, short, or invalid key. Deployment aborted.");
+      process.exit(1);
+    }
+    account = privateKeyToAccount(rawKey);
+  }
+
+  // DRY-RUN MODE
+  if (isDryRun) {
+    // Check collision for selected release
+    let collisionPassed = true;
+    let collisionBlocker = null;
+    let collisionStatusText = "PASS (no collision detected)";
+
+    if (existsSync(receiptFile)) {
+      collisionPassed = false;
+      collisionBlocker = `Deployment artifact ${receiptFile} already exists. Execution refused to prevent duplicate deployment.`;
+      collisionStatusText = `BLOCKED (final receipt exists at ${receiptFile})`;
+    } else if (existsSync(pendingFile)) {
+      collisionPassed = false;
+      collisionBlocker = `Pending deployment journal ${pendingFile} already exists. An earlier deployment may be in flight or interrupted. DO NOT REDEPLOY. Inspect or resume the pending transaction first.`;
+      collisionStatusText = `BLOCKED (pending journal exists at ${pendingFile})`;
+    }
+
+    console.log("======================================================================");
+    console.log(`MAKEWHOLE ${releaseConfig.release.toUpperCase()} DEPLOYMENT PREFLIGHT (DRY-RUN)`);
+    console.log("======================================================================");
+    console.log(`Execution Mode           : DRY-RUN (read-only, no write/deploy submitted)`);
+    console.log(`Selected Release         : ${releaseConfig.release}`);
+    console.log(`Pending Journal Path     : ${pendingFile}`);
+    console.log(`Final Receipt Path       : ${receiptFile}`);
+    console.log(`Collision Status         : ${collisionStatusText}`);
+    console.log(`Target Network           : ${network.name}`);
+    console.log(`Chain ID                 : ${chainId}`);
+    console.log(`RPC Endpoint             : ${rpcUrl}`);
+    console.log(`Block Explorer           : ${explorerUrl}`);
+    console.log(`Contract Source          : contracts/makewhole.py`);
+    console.log(`Contract Code Size       : ${workingCode.length} bytes`);
+    console.log(`Working Source SHA-256   : ${gate.workingSha}`);
+    console.log(`Committed Source SHA-256 : ${gate.committedSha}`);
+    console.log(`Source Commit            : ${gate.headCommit}`);
+    console.log(`Release Source Gate      : ${gate.passed ? "PASS" : "BLOCKED"}`);
+    console.log(`GenLayer SDK Version     : ${sdkVersion}`);
+    console.log(`Viem Version             : ${viemVersion}`);
+    console.log(`Configured Deployer      : [No signer loaded - dry-run operates without credentials]`);
+
+    if (!gate.passed) {
+      console.log("\n[RELEASE SOURCE GATE BLOCKED]");
+      console.log("Real deployment is strictly prohibited until this release is committed:");
+      gate.issues.forEach((issue) => console.log(`  - ${issue}`));
+    }
+
+    // Read-only RPC Probe (at most 3 attempts, bounded 8000ms timeout)
+    console.log("\nProbing network connectivity...");
+    const probeRes = await probeRpcEndpointWithRetry(rpcUrl, chainId, 3, 8000);
+    const rpcProbePassed = Boolean(probeRes?.ok);
+    const rpcChainMatched = Boolean(probeRes?.ok && probeRes?.matches);
+
+    if (rpcProbePassed) {
+      console.log(`[PASS] RPC probe to ${rpcUrl} succeeded.`);
+      console.log(`       Reported chainId: ${probeRes.hexChainId} (${probeRes.decChainId})`);
+      if (!rpcChainMatched) {
+        console.error(`[FAIL] RPC chainId (${probeRes.decChainId}) does not match expected (${chainId})!`);
+      }
+    } else {
+      console.error(`[FAIL] RPC probe to ${rpcUrl} failed: ${probeRes?.error || "Unknown error"}`);
+    }
+
+    // Historical v1 Contract Probe (at most 1 retry, informational / warning-only)
+    let historicalV1Status = "SKIPPED";
+    let v1ProbePassed = false;
+    if (chainId === 61997) {
+      console.log(`\nProbing historical v1 contract (${HISTORICAL_V1_CONTRACT})...`);
+      const client = createClient({
+        chain: network.chain,
+        endpoint: rpcUrl,
+      });
+      const v1Probe = await probeHistoricalContractWithRetry(client, HISTORICAL_V1_CONTRACT, 2);
+      if (v1Probe.ok) {
+        v1ProbePassed = true;
+        historicalV1Status = `REACHABLE: ${v1Probe.methodCount} methods, ${v1Probe.jobCount} jobs indexed`;
+        console.log(`[PASS] Historical v1 contract reachable: ${v1Probe.methodCount} methods, ${v1Probe.jobCount} jobs indexed.`);
+      } else {
+        historicalV1Status = `UNREACHABLE (${v1Probe.error}) - informational only`;
+        console.warn(`[WARN] Historical v1 contract probe failed: ${v1Probe.error}`);
+      }
+    }
+
+    // Fee Estimation (Read-Only, at most 2 attempts)
+    console.log("\nEstimating deployment transaction fees (read-only SDK call)...");
+    const client = createClient({
+      chain: network.chain,
+      endpoint: rpcUrl,
+    });
+    const estParams = {
+      code: workingCode,
+      args: [],
+      leaderOnly: false,
+    };
+
+    let feeEstimatePassed = false;
+    let validatedFees = null;
+    let feeEstimateError = null;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (attempt > 1) {
+        console.log(`[RETRY ${attempt}/2] Retrying fee estimation...`);
+      }
+      try {
+        const raw = await client.estimateTransactionFees(estParams);
+        const quoteData = raw?.fees ?? raw?.data?.fees ?? raw;
+        validatedFees = validateFeeQuote(quoteData);
+        feeEstimatePassed = true;
+        break;
+      } catch (e) {
+        feeEstimateError = e.message;
+        if (attempt < 2) {
+          await sleep(1000);
+        }
+      }
+    }
+
+    if (feeEstimatePassed && validatedFees) {
+      console.log("[PASS] Fee estimation succeeded.");
+      console.log(`       Estimated Fee Value : ${validatedFees.feeValue.toString()} wei`);
+      if (validatedFees.distribution) {
+        const rotationsStr = Array.isArray(validatedFees.distribution.rotations)
+          ? `[${validatedFees.distribution.rotations.map((r) => r.toString()).join(", ")}]`
+          : String(validatedFees.distribution.rotations);
+        console.log(`       Leader Allocation   : ${validatedFees.distribution.leaderTimeunitsAllocation}`);
+        console.log(`       Validator Allocation: ${validatedFees.distribution.validatorTimeunitsAllocation}`);
+        console.log(`       Rotations           : ${rotationsStr}`);
+        console.log(`       Execution Budget    : ${validatedFees.distribution.executionBudgetPerRound}`);
+      }
+    } else {
+      console.error(`[FAIL] Fee estimation failed: ${feeEstimateError}`);
+    }
+
+    // Evaluate overall readiness fail-closed across all required gates
+    const readiness = evaluatePreflightReadiness({
+      sourceGatePassed: gate.passed,
+      rpcProbePassed,
+      rpcChainMatched,
+      feeEstimatePassed,
+      historicalV1Passed: v1ProbePassed,
+      collisionPassed,
+      collisionBlocker,
+    });
+
+    console.log(
+      formatDeploymentPlan({
+        readiness,
+        networkName: network.name,
+        chainId,
+        rpcUrl,
+        historicalV1Status,
+        release: releaseConfig.release,
+      })
+    );
+
+    process.exitCode = getPreflightExitCode(readiness);
+    return;
+  }
+
+  // EXECUTE MODE
+  console.log("======================================================================");
+  console.log(`MAKEWHOLE ${releaseConfig.release.toUpperCase()} DEPLOYMENT EXECUTION`);
+  console.log("======================================================================");
+
+  // 1. Release Source Gate Check
+  if (!gate.passed) {
+    console.error("Error: Release Source Gate BLOCKED. Cannot execute deployment:");
+    gate.issues.forEach((issue) => console.error(`  - ${issue}`));
+    console.error("Deployment aborted before broadcast.");
+    process.exit(1);
+  }
+
+  // 2. Pre-broadcast collision checks (both final receipt and pending journal)
+  let collisionInfo;
+  try {
+    collisionInfo = assertNoDeploymentCollisions({ deploymentsDir, release: releaseConfig.release });
+  } catch (e) {
+    console.error(`Error: ${e.message}`);
+    process.exit(1);
+  }
+
+  // 3. Enforce network identity via read-only eth_chainId probe
+  console.log("Verifying network identity via read-only eth_chainId probe...");
+  const probeRes = await probeRpcEndpoint(rpcUrl, chainId);
+  if (!probeRes.ok) {
+    console.error(`Error: RPC probe to ${rpcUrl} failed: ${probeRes.error}`);
+    process.exit(1);
+  }
+  if (!probeRes.matches) {
+    console.error(`Error: Chain ID mismatch. RPC returned ${probeRes.decChainId}, expected ${chainId}. Deployment aborted.`);
+    process.exit(1);
+  }
+
+  // Print only chain ID, RPC hostname and deployer public address
+  console.log(`Target Network   : ${network.name}`);
+  console.log(`Chain ID         : ${chainId}`);
+  console.log(`RPC Host         : ${new URL(rpcUrl).hostname}`);
+  console.log(`Deployer Address : ${account.address}`);
+
+  // Create client with authenticated deployer
+  const client = createClient({
+    chain: network.chain,
+    account,
+    endpoint: rpcUrl,
+  });
+
+  // 4. Fee estimation fail closed
+  console.log("Estimating fees...");
+  const estParams = {
+    code: workingCode,
+    args: [],
+    leaderOnly: false,
+  };
+
+  let rawQuote;
+  try {
+    rawQuote = await client.estimateTransactionFees(estParams);
+  } catch (e) {
+    console.error("estimateTransactionFees failed:", e.message);
+    process.exit(1);
+  }
+
+  const quoteData = rawQuote?.fees ?? rawQuote?.data?.fees ?? rawQuote;
+  let validatedFees;
+  try {
+    validatedFees = validateFeeQuote(quoteData);
+  } catch (e) {
+    console.error("Fee estimation validation failed:", e.message);
+    process.exit(1);
+  }
+
+  const feesObj = {
+    distribution: validatedFees.distribution,
+    feeValue: validatedFees.feeValue,
+  };
+
+  if (Array.isArray(validatedFees.messageAllocations) && validatedFees.messageAllocations.length > 0) {
+    feesObj.messageAllocations = validatedFees.messageAllocations;
+  }
+
+  // Balance validation before deployContract
+  console.log("Checking deployer balance...");
+  let deployerBalance;
+  try {
+    deployerBalance = await client.getBalance({ address: account.address });
+  } catch (e) {
+    console.error("Failed to query deployer balance:", e.message);
+    process.exit(1);
+  }
+
+  try {
+    validateDeployerBalance(deployerBalance, validatedFees.feeValue);
+    console.log(`Deployer balance verified: ${deployerBalance.toString()} wei (required fee: ${validatedFees.feeValue.toString()} wei)`);
+  } catch (e) {
+    console.error("Deployer balance check failed:");
+    console.error(`  Deployer Address : ${account.address}`);
+    console.error(`  Current Balance  : ${deployerBalance !== undefined ? deployerBalance.toString() : "unknown"} wei`);
+    console.error(`  Required Fee     : ${validatedFees.feeValue.toString()} wei`);
+    if (e.deficit !== undefined) {
+      console.error(`  Deficit          : ${e.deficit.toString()} wei`);
+    }
+    console.error("Aborting deployment before broadcast due to insufficient funds.");
+    process.exit(1);
+  }
+
+  // Atomically write non-secret pending intent before broadcasting
+  const pendingIntent = createPendingJournalIntent({
+    project: "makewhole",
+    release: releaseConfig.release,
+    chainId,
+    rpcHost: new URL(rpcUrl).hostname,
+    deployerAddress: account.address,
+    sourceCommit: gitStatus.headCommit,
+    contractSourceSha256: gate.workingSha,
+  });
+
+  atomicWriteFile(pendingFile, JSON.stringify(pendingIntent, null, 2) + "\n");
+  console.log(`Recorded pending deployment intent to: ${pendingFile}`);
+
+  // 5. Broadcast deployment transaction
+  console.log("Broadcasting deployment transaction...");
+  let txHash;
+  try {
+    txHash = await client.deployContract({
+      code: workingCode,
+      args: [],
+      leaderOnly: false,
+      fees: feesObj,
+    });
+  } catch (e) {
+    console.error("deployContract broadcast failed:", e.message);
+    process.exit(1);
+  }
+
+  const broadcastIntent = markPendingJournalBroadcast(pendingIntent, txHash);
+  atomicWriteFile(pendingFile, JSON.stringify(broadcastIntent, null, 2) + "\n");
+  console.log("Transaction broadcasted:", txHash);
+  console.log(`Updated pending journal to BROADCAST: ${pendingFile}`);
+
+  console.log("Waiting for transaction receipt (finalized)...");
+  let receipt;
+  try {
+    receipt = await client.waitForTransactionReceipt({
+      hash: txHash,
+      waitUntil: "finalized",
+      retries: 60,
+    });
+  } catch (e) {
+    console.error("\n[FAILURE] Failed while waiting for transaction receipt:", e.message);
+    console.error(`Transaction hash: ${txHash}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY. Resume or inspect this transaction first.");
+    process.exit(1);
+  }
+
+  // 6. Strict finalized receipt validation
+  let contractAddress;
+  try {
+    contractAddress = validateDeployReceipt(receipt);
+  } catch (e) {
+    console.error("\n[FAILURE] Receipt validation failed:", e.message);
+    console.error("Receipt summary:", {
+      status: receipt.statusName || receipt.status,
+      executionResult: receipt.txExecutionResultName || receipt.executionResult,
+      hash: txHash,
+    });
+    console.error(`Transaction hash: ${txHash}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY. Resume or inspect this transaction first.");
+    process.exit(1);
+  }
+
+  console.log(`\n[SUCCESS] Finalized contract deployed at address: ${contractAddress}`);
+  console.log(`Deployment Tx: ${txHash}`);
+
+  // 7. Verify deployed contract on-chain before recording success
+  console.log("Verifying deployed contract on-chain before recording success...");
+  try {
+    await verifyDeployedContract(client, contractAddress);
+    console.log("[PASS] Deployed contract verified: valid v2 schema, 0 initial jobs, all economics zeroed.");
+  } catch (e) {
+    console.error("\n[FAILURE] Post-deployment contract verification failed:", e.message);
+    console.error(`Transaction hash: ${txHash}`);
+    console.error(`Pending journal preserved at: ${pendingFile}`);
+    console.error("DO NOT REDEPLOY. Resume or inspect this transaction first.");
+    process.exit(1);
+  }
+
+  // 8. Atomic receipt creation
+  const receiptArtifact = {
+    project: "makewhole",
+    version: releaseConfig.version,
+    chainId,
+    networkName: network.name,
+    rpcHost: new URL(rpcUrl).hostname,
+    explorerBaseUrl: explorerUrl,
+    contractAddress,
+    deploymentTxHash: txHash,
+    deployedAtUtc: new Date().toISOString(),
+    sourceCommit: gitStatus.headCommit,
+    contractSourceSha256: gate.workingSha,
+    executionResult: receipt.txExecutionResultName,
+    sdkVersion,
+  };
+
+  atomicWriteFile(receiptFile, JSON.stringify(receiptArtifact, null, 2) + "\n");
+  console.log(`Wrote deployment receipt to: ${receiptFile}`);
+
+  // Remove pending journal only after final receipt is written
+  if (existsSync(pendingFile)) {
+    unlinkSync(pendingFile);
+    console.log(`Removed pending journal: ${pendingFile}`);
+  }
+
+  // 9. Surgical atomic environment update if requested
+  if (updateEnv) {
+    const existingEnv = existsSync(envLocal) ? readFileSync(envLocal, "utf8") : "";
+    const updatedEnv = updateEnvContent(existingEnv, {
+      NEXT_PUBLIC_CONTRACT_ADDRESS: contractAddress,
+      NEXT_PUBLIC_CHAIN_ID: chainId.toString(),
+      NEXT_PUBLIC_STUDIO_RPC: rpcUrl,
+      NEXT_PUBLIC_STUDIO_EXPLORER: explorerUrl,
+      GENLAYER_STUDIO_URL: rpcUrl,
+    });
+    atomicWriteFile(envLocal, updatedEnv);
+    console.log("Updated web/.env.local with new contract address.");
+  } else {
+    console.log("\n[INFO] --update-env was not passed. web/.env.local was NOT modified.");
+    console.log("Suggested environment lines for manual update:");
+    console.log(`NEXT_PUBLIC_CONTRACT_ADDRESS=${contractAddress}`);
+    console.log(`NEXT_PUBLIC_CHAIN_ID=${chainId}`);
+    console.log(`NEXT_PUBLIC_STUDIO_RPC=${rpcUrl}`);
+    console.log(`NEXT_PUBLIC_STUDIO_EXPLORER=${explorerUrl}`);
+    console.log(`GENLAYER_STUDIO_URL=${rpcUrl}`);
+  }
+}
+
+main().catch((err) => {
+  console.error("Fatal deployment error:", err.message);
+  process.exit(1);
+});

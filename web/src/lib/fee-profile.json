@@ -61,5 +61,23 @@
       "rotations": ["0"],
       "maxPriceGenPerTimeUnit": "2"
     }
+  },
+  "unbond": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "30000000000000000",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
+  },
+  "expire": {
+    "distribution": {
+      "leaderTimeunitsAllocation": "100",
+      "validatorTimeunitsAllocation": "200",
+      "totalMessageFees": "30000000000000000",
+      "rotations": ["0"],
+      "maxPriceGenPerTimeUnit": "2"
+    }
   }
 }

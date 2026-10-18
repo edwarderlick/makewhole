@@ -32,7 +32,7 @@ export default function HowPage() {
             <li>Brief URL: <code>https://gist.githubusercontent.com/edwarderlick/2f257c8245678df54a30b4c319469f20/raw/brief.md</code></li>
             <li>Writer B (0x): Paste Account 2's address (must differ from A)</li>
             <li>Publisher C (0x): Paste Account 3's address</li>
-            <li>Set Pay B: 0.20 GEN, Pay C: 0.20 GEN, Premium: 0.05 GEN, Deadline: 15m.</li>
+            <li>Set Pay B: 0.20 GEN, Pay C: 0.20 GEN, Premium: 0.05 GEN, Deadline: at least 1 hour in the future.</li>
             <li>Click <strong>Escrow create_job</strong> and wait until you are routed to <code>/job/&#123;id&#125;</code>.</li>
             <li>Ensure the role chip says <strong>Connected as Client A</strong> and the state is <strong>OPEN</strong>.</li>
           </ul>
@@ -45,7 +45,7 @@ export default function HowPage() {
           </p>
           <ul className="list-disc pl-5 font-label-code text-sm space-y-2">
             <li>The role chip updates to <strong>Connected as Writer B</strong>.</li>
-            <li>Click <strong>Bond</strong> (0.20 GEN minimum).</li>
+            <li>Click <strong>Bond</strong> (0.20 GEN minimum to reserve pay_c liability).</li>
             <li>Once BONDED, paste the full URL: <code>https://gist.githubusercontent.com/edwarderlick/2f257c8245678df54a30b4c319469f20/raw/rug-write.md</code></li>
             <li>Click <strong>Submit</strong>. State becomes IN_FLIGHT.</li>
           </ul>
@@ -56,7 +56,7 @@ export default function HowPage() {
           <ul className="list-disc pl-5 font-label-code text-sm space-y-2">
             <li>Switch to Account 3 (Publisher C). Click <strong>Ack Downstream</strong>. State becomes ACKED.</li>
             <li>Switch back to Account 1 (Client A). Click <strong>Adjudicate</strong>.</li>
-            <li>Because you submitted a rug, the state will settle to <strong>SETTLED_RUG</strong>!</li>
+            <li>Because you submitted a rug, consensus settles to <strong>SETTLED_RUG</strong>: Client A receives restitution (pay_b + pay_c), Publisher C receives pay_c from Writer B’s slashed reservation, and premium moves to the pool.</li>
           </ul>
         </section>
       </div>

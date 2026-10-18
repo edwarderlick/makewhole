@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@/lib/wallet";
 import { hasLiveContract, views, writes, type Job } from "@/lib/contract";
-import { formatGen, parseGen, shortAddr, shortId } from "@/lib/format";
+import { formatGen, shortAddr, shortId } from "@/lib/format";
 import { StatusChip } from "@/components/StatusChip";
 import { TxButton } from "@/components/TxButton";
 import { EvidenceLink } from "@/components/EvidenceLink";
@@ -360,12 +360,12 @@ export default function PipelinePage() {
                 <p className="font-body-lg text-body-lg text-primary font-semibold mt-1">
                   {job
                     ? job.state === "SETTLED_RUG"
-                      ? `SETTLED_RUG · unused pay_b (${formatGen(job.pay_b)} GEN) refunds to A. C receives pay_c (${formatGen(job.pay_c)} GEN) from B’s bond first.`
+                      ? `SETTLED_RUG · Client A receives restitution (${formatGen(BigInt(job.pay_b || 0) + BigInt(job.pay_c || 0))} GEN). Publisher C receives pay_c (${formatGen(job.pay_c)} GEN) from Writer B’s slashed reservation.`
                       : job.state === "SETTLED_OK"
-                        ? `SETTLED_OK · B receives pay_b, C receives pay_c, premium stays in the pool.`
+                        ? `SETTLED_OK · B receives pay_b, C receives pay_c, premium moves to the pool.`
                         : `${job.state} · role ${role || "observer"}`
                     : rug
-                      ? "Writer B slashed. Client A refunded unused write fee. Publisher C made whole from bond then pool."
+                      ? "Writer B slashed. Client A receives restitution (pay_b + pay_c). Publisher C made whole from Writer B’s slashed reservation."
                       : "Load a job or replay the gist to see the money line."}
                 </p>
               </div>

@@ -227,7 +227,7 @@ export default function LandingPage() {
                 <div className="h-44 bg-white border border-neutral-200 rounded-lg p-4 flex flex-col justify-center items-center relative overflow-hidden bg-blueprint">
                   <div className="p-3 bg-lime-50 border border-lime-300 rounded-lg text-center w-full max-w-xs">
                     <div className="text-[10px] font-mono text-lime-800 uppercase font-bold">Direct Payout Triggered</div>
-                    <div className="text-xs font-mono text-neutral-900 font-bold mt-1">Agent C paid from bond then pool</div>
+                    <div className="text-xs font-mono text-neutral-900 font-bold mt-1">Agent C paid from Writer B’s reservation</div>
                     <div className="mt-2 text-[10px] font-mono text-lime-700 bg-lime-100 rounded px-2 py-0.5 inline-block">
                       Status: MADE WHOLE
                     </div>
@@ -237,7 +237,7 @@ export default function LandingPage() {
                   <span className="text-[11px] font-mono uppercase tracking-wider text-lime-600 font-semibold block">Phase 03</span>
                   <h3 className="text-lg font-bold text-neutral-900 mt-1">Downstream still settles</h3>
                   <p className="mt-2 text-sm text-neutral-600 leading-relaxed">
-                    Unused pay_b refunds to A. C is paid from B’s bond first, then the pool. The next agent still gets
+                    Client A receives restitution (pay_b + pay_c). C is paid from B’s dedicated reservation. The next agent still gets
                     paid.
                   </p>
                 </div>
@@ -389,7 +389,7 @@ export default function LandingPage() {
                   ["Bond posted upfront:", "Collateral is locked before downstream tasks initialize."],
                   ["Public evidence fetched:", "Validators evaluate live public HTTPS URLs."],
                   ["Three-field ruling:", "Validators must agree on (fault, pay_downstream, slash_bps)."],
-                  ["Publisher paid from bond then pool:", "If the individual bond falls short, the pool backstops — or UNDETERMINED if both are short."],
+                  ["Dedicated per-job collateral reservation:", "Writer B must hold sufficient available bond to reserve exactly pay_c before a job can enter BONDED. No undercollateralized jobs."],
                 ].map(([t, d]) => (
                   <li key={t} className="flex items-start space-x-3">
                     <span className="flex-shrink-0 w-5 h-5 rounded-full bg-lime-100 text-lime-700 flex items-center justify-center text-xs font-bold mt-0.5">
@@ -475,12 +475,11 @@ export default function LandingPage() {
                 </div>
                 <h3 className="text-lg font-bold text-neutral-900">The Rug Path</h3>
                 <p className="text-xs text-neutral-600 leading-relaxed">
-                  B rugs. Unused pay_b refunds to A. C is paid from B’s bond then the pool. Remaining bond slashed into
-                  the pool. B rep − 1 (floor 0).
+                  B rugs. Client A receives restitution (pay_b + pay_c). C is paid from B’s dedicated reservation. B loses only the affected job’s reservation. B rep − 1 (floor 0).
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-neutral-200 text-[11px] font-mono text-neutral-500">
-                Outcome: Next agent made whole
+                Outcome: Next agent made whole · Client full restitution
               </div>
             </div>
             <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-6 flex flex-col justify-between">
@@ -489,14 +488,13 @@ export default function LandingPage() {
                   <span className="text-xs font-mono px-2 py-0.5 bg-neutral-200 text-neutral-800 rounded font-semibold">PATH 03</span>
                   <span className="text-xs font-mono text-neutral-600 font-bold">[ UNDETERMINED ]</span>
                 </div>
-                <h3 className="text-lg font-bold text-neutral-900">No GEN moves</h3>
+                <h3 className="text-lg font-bold text-neutral-900">Settlement Grace Active</h3>
                 <p className="text-xs text-neutral-600 leading-relaxed">
-                  Fetch fail, no majority, or bond+pool cannot cover pay_c. Retry adjudicate. Skill preflight:
-                  check_bond before GPU.
+                  Fetch fail or no consensus majority. Retry adjudication during 24h grace; after grace, expire refunds full escrow and releases reservation. Skill preflight: check_bond before GPU.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-neutral-200 text-[11px] font-mono text-neutral-500">
-                Outcome: Nothing trapped · retry
+                Outcome: Nothing trapped · retry or expire
               </div>
             </div>
           </div>

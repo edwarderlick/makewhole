@@ -32,9 +32,44 @@ ACTIVE_STATES = (
     STATE_UNDETERMINED,
 )
 
+MIN_DEADLINE_LEAD_TIME_SEC = 3600
+SETTLEMENT_GRACE_PERIOD_SEC = 86400
 URL_MAX = 2048
 BODY_MAX = 24000
 ZERO = Address("0x0000000000000000000000000000000000000000")
+
+
+def _get_trusted_chain_time() -> int:
+    try:
+        ts_val = datetime.now(timezone.utc)
+    except Exception:
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
+
+    if not isinstance(ts_val, datetime):
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
+
+    if ts_val.tzinfo is None or ts_val.utcoffset() is None:
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
+
+    try:
+        ts = int(ts_val.timestamp())
+    except Exception:
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
+
+    if ts <= 0:
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
+
+    return ts
 
 
 def _addr_key(addr: Address) -> str:
@@ -273,12 +308,14 @@ class Job:
     reason: str
     paid_c: u256
     slashed_b: u256
+    reserved_bond: u256
 
 
 class Makewhole(gl.contract.Contract):
     jobs: TreeMap[str, Job]
     job_ids: DynArray[str]
     bonds: TreeMap[str, u256]
+    reserved_bonds: TreeMap[str, u256]
     credits: TreeMap[str, u256]
     rep: TreeMap[str, u256]
     writer_active: TreeMap[str, u256]
@@ -301,6 +338,63 @@ class Makewhole(gl.contract.Contract):
         self.settled_rug = u256(0)
         self.nonce = u256(0)
 
+    def _available_bond(self, writer: Address) -> u256:
+        k = _addr_key(writer)
+        total = _map_get_u256(self.bonds, k)
+        reserved = _map_get_u256(self.reserved_bonds, k)
+        if reserved > total:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted bond accounting: reserved > total")
+        return total - reserved
+
+    def _require_full_job_reservation(self, job: Job) -> None:
+        wk = _addr_key(job.writer)
+        tot_bond = _map_get_u256(self.bonds, wk)
+        res_bond = _map_get_u256(self.reserved_bonds, wk)
+        if (
+            job.pay_c == u256(0)
+            or job.reserved_bond != job.pay_c
+            or res_bond < job.reserved_bond
+            or res_bond > tot_bond
+            or job.reserved_bond > tot_bond
+        ):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted bond reservation accounting")
+
+    def _reserve_bond(self, writer: Address, amt: u256) -> None:
+        if amt == u256(0):
+            return
+        k = _addr_key(writer)
+        total = _map_get_u256(self.bonds, k)
+        cur_reserved = _map_get_u256(self.reserved_bonds, k)
+        new_reserved = cur_reserved + amt
+        if new_reserved > total:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} insufficient available bond to reserve")
+        self.reserved_bonds[k] = new_reserved
+
+    def _release_bond(self, writer: Address, amt: u256) -> None:
+        if amt == u256(0):
+            return
+        k = _addr_key(writer)
+        cur_reserved = _map_get_u256(self.reserved_bonds, k)
+        if amt > cur_reserved:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted bond accounting: release exceeds reserved")
+        self.reserved_bonds[k] = cur_reserved - amt
+
+    def _slash_reserved_bond(self, writer: Address, amt: u256) -> None:
+        if amt == u256(0):
+            return
+        k = _addr_key(writer)
+        cur_reserved = _map_get_u256(self.reserved_bonds, k)
+        total = _map_get_u256(self.bonds, k)
+        if amt > cur_reserved:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted bond accounting: slash exceeds reserved")
+        if amt > total:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted bond accounting: slash exceeds total")
+        if amt > self.locked_bonds:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted bond accounting: slash exceeds locked_bonds")
+        self.reserved_bonds[k] = cur_reserved - amt
+        self.bonds[k] = total - amt
+        self.locked_bonds = self.locked_bonds - amt
+
     def _require_job(self, job_id: str) -> Job:
         if job_id not in self.jobs:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown job")
@@ -314,7 +408,7 @@ class Makewhole(gl.contract.Contract):
         cur = int(_map_get_u256(self.writer_active, k))
         nxt = cur + delta
         if nxt < 0:
-            nxt = 0
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} writer_active underflow")
         self.writer_active[k] = u256(nxt)
 
     def _new_id(self, brief_url: str, pay_b: u256, pay_c: u256) -> str:
@@ -348,6 +442,10 @@ class Makewhole(gl.contract.Contract):
             self.credits_total = self.credits_total + amount
 
     def _job_view(self, job: Job) -> dict:
+        wk = _addr_key(job.writer)
+        tot_bond = _map_get_u256(self.bonds, wk)
+        res_bond = _map_get_u256(self.reserved_bonds, wk)
+        avail_bond = tot_bond - res_bond if tot_bond >= res_bond else u256(0)
         return {
             "id": job.id,
             "client": str(job.client),
@@ -355,11 +453,13 @@ class Makewhole(gl.contract.Contract):
             "publisher": str(job.publisher),
             "brief_url": job.brief_url,
             "deliverable_url": job.deliverable_url,
+            "deliverable_hash": job.deliverable_hash,
             "research_url": job.research_url,
             "publish_url": job.publish_url,
             "pay_b": int(job.pay_b),
             "pay_c": int(job.pay_c),
             "premium": int(job.premium),
+            "deadline": int(job.deadline),
             "state": job.state,
             "fault": job.fault,
             "pay_downstream": job.pay_downstream == "true",
@@ -367,8 +467,18 @@ class Makewhole(gl.contract.Contract):
             "reason": job.reason,
             "paid_c": int(job.paid_c),
             "slashed_b": int(job.slashed_b),
-            "bonded": int(_map_get_u256(self.bonds, _addr_key(job.writer))) > 0,
-            "writer_rep": int(_map_get_u256(self.rep, _addr_key(job.writer))),
+            "reserved_bond": int(job.reserved_bond),
+            "bonded": (
+                job.state in (STATE_BONDED, STATE_IN_FLIGHT, STATE_ACKED, STATE_UNDETERMINED)
+                and job.reserved_bond == job.pay_c
+                and job.pay_c > u256(0)
+                and job.reserved_bond <= res_bond
+                and res_bond <= tot_bond
+            ),
+            "writer_rep": int(_map_get_u256(self.rep, wk)),
+            "writer_total_bond": int(tot_bond),
+            "writer_reserved_bond": int(res_bond),
+            "writer_available_bond": int(avail_bond),
         }
 
     @gl.public.write.payable
@@ -392,27 +502,37 @@ class Makewhole(gl.contract.Contract):
         if _map_get_u256(self.rep, k) == u256(0):
             self.rep[k] = u256(1)
             
-        # Check if they have an active OPEN job to auto-transition
+        # Scan that writer's OPEN jobs in deterministic job_ids FIFO order
         for job_id in self.job_ids:
             j = self.jobs[job_id]
             if _same(j.writer, sender) and j.state == STATE_OPEN:
-                if self.bonds[k] < j.pay_c:
-                    raise gl.vm.UserError(f"{ERROR_EXPECTED} bond < pay_c")
-                j.state = STATE_BONDED
-                self.jobs[job_id] = j
+                if j.reserved_bond != u256(0):
+                    raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted OPEN job reservation: expected 0")
+                avail = self._available_bond(sender)
+                if avail >= j.pay_c:
+                    self._reserve_bond(sender, j.pay_c)
+                    j.reserved_bond = j.pay_c
+                    j.state = STATE_BONDED
+                    self.jobs[job_id] = j
+                else:
+                    # Stop at first OPEN job that cannot be fully reserved
+                    break
 
     @gl.public.write
     def unbond(self) -> None:
         sender = gl.message.sender_address
         k = _addr_key(sender)
-        if int(_map_get_u256(self.writer_active, k)) > 0:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} writer still has an open job")
-        amt = _map_get_u256(self.bonds, k)
-        if amt == u256(0):
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} no bond")
-        self.bonds[k] = u256(0)
-        self.locked_bonds = self.locked_bonds - amt
-        self._pay(sender, amt)
+        avail = self._available_bond(sender)
+        if avail == u256(0):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} no available bond to unbond")
+        cur_total = _map_get_u256(self.bonds, k)
+        if cur_total < avail:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted bond accounting: total < available")
+        if self.locked_bonds < avail:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_bonds < available")
+        self.bonds[k] = cur_total - avail
+        self.locked_bonds = self.locked_bonds - avail
+        self._pay(sender, avail)
 
     @gl.public.write.payable
     def create_job(
@@ -444,12 +564,28 @@ class Makewhole(gl.contract.Contract):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} pay_b and pay_c must be > 0")
         value = gl.message.value
         need = pay_b + pay_c + premium_arg
-        if value < need:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} escrow too small for pay_b+pay_c+premium")
+        if value != need:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} escrow must equal exactly pay_b+pay_c+premium")
         premium = premium_arg
+
+        now = _get_trusted_chain_time()
+        dl = int(deadline)
+        if dl <= 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} deadline must be > 0")
+        if dl < now:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} deadline is in the past")
+        if dl < now + MIN_DEADLINE_LEAD_TIME_SEC:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} deadline must be at least {MIN_DEADLINE_LEAD_TIME_SEC}s in future")
         
-        bonded = _map_get_u256(self.bonds, _addr_key(writer)) >= pay_c
-        state = STATE_BONDED if bonded else STATE_OPEN
+        avail = self._available_bond(writer)
+        if avail >= pay_c:
+            self._reserve_bond(writer, pay_c)
+            res_bond = pay_c
+            state = STATE_BONDED
+        else:
+            res_bond = u256(0)
+            state = STATE_OPEN
+
         job_id = self._new_id(brief, pay_b, pay_c)
         job = Job(
             id=job_id,
@@ -472,10 +608,11 @@ class Makewhole(gl.contract.Contract):
             reason="",
             paid_c=u256(0),
             slashed_b=u256(0),
+            reserved_bond=res_bond,
         )
         self.jobs[job_id] = job
         self.job_ids.append(job_id)
-        self.locked_jobs = self.locked_jobs + value
+        self.locked_jobs = self.locked_jobs + need
         self._bump_active(writer, 1)
         return job_id
 
@@ -483,15 +620,18 @@ class Makewhole(gl.contract.Contract):
         job = self._require_job(job_id)
         if not _same(gl.message.sender_address, job.writer):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} only writer B may submit")
-        if job.state not in (STATE_OPEN, STATE_BONDED):
+        if job.state != STATE_BONDED:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} submit not allowed in {job.state}")
+        self._require_full_job_reservation(job)
+
+        current_time = _get_trusted_chain_time()
+        if current_time >= int(job.deadline):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} deadline passed")
+
         url = _validate_public_https(deliverable_url, "deliverable_url")
-        bond = _map_get_u256(self.bonds, _addr_key(job.writer))
-        if bond == u256(0):
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} writer must be bonded")
-        # Bond may be < pay_c; SETTLED_RUG pays C from bond first, pool second.
+        clean_hash = str(deliverable_hash or "").strip()
         job.deliverable_url = url
-        job.deliverable_hash = deliverable_hash
+        job.deliverable_hash = clean_hash
         job.state = STATE_IN_FLIGHT
         self._put(job)
 
@@ -501,6 +641,11 @@ class Makewhole(gl.contract.Contract):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} only publisher C may ack")
         if job.state != STATE_IN_FLIGHT:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} ack not allowed in {job.state}")
+
+        current_time = _get_trusted_chain_time()
+        if current_time >= int(job.deadline):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} deadline passed")
+
         pub = str(publish_url)
         if pub.strip() != "":
             job.publish_url = _validate_public_https(pub, "publish_url")
@@ -513,16 +658,7 @@ class Makewhole(gl.contract.Contract):
 
     @gl.public.write
     def ack_downstream(self, job_id: str, publish_url: str) -> None:
-        job = self._require_job(job_id)
-        if not _same(gl.message.sender_address, job.publisher):
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} only publisher C may ack")
-        if job.state != STATE_IN_FLIGHT:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} ack not allowed in {job.state}")
-        pub = str(publish_url)
-        if len(pub.strip()) > 0:
-            job.publish_url = _validate_public_https(pub, "publish_url")
-        job.state = STATE_ACKED
-        self._put(job)
+        self._do_ack(job_id, publish_url)
 
     @gl.public.write
     def submit_hop(self, job_id: str, hop: str, url: str, deliverable_hash: str) -> None:
@@ -537,7 +673,7 @@ class Makewhole(gl.contract.Contract):
             self._put(job)
             return
         if hop_n in ("write", "1", "b", "writer"):
-            self._do_submit(job_id, safe)
+            self._do_submit(job_id, safe, deliverable_hash)
             return
         if hop_n in ("publish", "2", "c", "publisher"):
             self._do_ack(job_id, safe)
@@ -549,14 +685,31 @@ class Makewhole(gl.contract.Contract):
         job = self._require_job(job_id)
         if not _same(gl.message.sender_address, job.client):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} only client A may cancel")
+        if job.state in (STATE_SETTLED_OK, STATE_SETTLED_RUG, STATE_CANCELED):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} job already finished")
         if job.state not in (STATE_OPEN, STATE_BONDED):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} cancel after submit is forbidden")
+
         escrow = job.pay_b + job.pay_c + job.premium
+        if self.locked_jobs < escrow:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_jobs < escrow")
+
+        if job.state == STATE_BONDED:
+            self._require_full_job_reservation(job)
+        elif job.state == STATE_OPEN:
+            if job.reserved_bond != u256(0):
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted OPEN job reservation: expected 0")
+
+        self._bump_active(job.writer, -1)
+
+        if job.state == STATE_BONDED:
+            self._release_bond(job.writer, job.reserved_bond)
+            job.reserved_bond = u256(0)
+
         job.state = STATE_CANCELED
         job.reason = "Canceled by client before submit. Escrow refunded in full."
         self._put(job)
         self.locked_jobs = self.locked_jobs - escrow
-        self._bump_active(job.writer, -1)
         self._pay(job.client, escrow)
 
     @gl.public.write
@@ -564,6 +717,11 @@ class Makewhole(gl.contract.Contract):
         job = self._require_job(job_id)
         if job.state not in (STATE_ACKED, STATE_UNDETERMINED):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} must be ACKED or UNDETERMINED to adjudicate")
+
+        current_time = _get_trusted_chain_time()
+        grace_threshold = int(job.deadline) + SETTLEMENT_GRACE_PERIOD_SEC
+        if current_time > grace_threshold:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} settlement grace passed; expire required")
 
         brief = _validate_public_https(job.brief_url, "brief_url")
         deliverable = _validate_public_https(job.deliverable_url, "deliverable_url")
@@ -607,11 +765,16 @@ class Makewhole(gl.contract.Contract):
         wk = _addr_key(job.writer)
 
         if fault == "none":
+            if self.locked_jobs < escrow:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_jobs < escrow")
+            self._require_full_job_reservation(job)
+            self._bump_active(job.writer, -1)
             job.state = STATE_SETTLED_OK
+            self._release_bond(job.writer, job.reserved_bond)
+            job.reserved_bond = u256(0)
             self.pool = self.pool + job.premium
             self.locked_jobs = self.locked_jobs - escrow
             self.settled_ok = self.settled_ok + u256(1)
-            self._bump_active(job.writer, -1)
             self._pay(job.writer, job.pay_b)
             self._pay(job.publisher, job.pay_c)
             job.paid_c = job.pay_c
@@ -619,35 +782,30 @@ class Makewhole(gl.contract.Contract):
             return
 
         if fault == "B" and pay_downstream:
+            if self.locked_jobs < escrow:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_jobs < escrow")
+            self._require_full_job_reservation(job)
+            self._bump_active(job.writer, -1)
             job.state = STATE_SETTLED_RUG
-            bond = _map_get_u256(self.bonds, wk)
             pay_c = job.pay_c
-            from_bond = pay_c if bond >= pay_c else bond
-            from_pool = pay_c - from_bond
-            if from_pool > self.pool:
-                job.state = STATE_UNDETERMINED
-                job.reason = "Pool cannot cover publisher. No GEN moved."
-                self._put(job)
-                self._pay(job.client, u256(0))
-                self._pay(job.publisher, u256(0))
-                return
-            remain_bond = bond - from_bond
-            slashed = remain_bond
-            self.bonds[wk] = u256(0)
-            self.locked_bonds = self.locked_bonds - bond
-            if from_pool > u256(0):
-                self.pool = self.pool - from_pool
-            self.pool = self.pool + slashed + job.premium
+            # Slash exactly this job's reserved pay_c
+            self._slash_reserved_bond(job.writer, pay_c)
+            job.reserved_bond = u256(0)
+
+            self.pool = self.pool + job.premium
             self.locked_jobs = self.locked_jobs - escrow
             self.slash_count = self.slash_count + u256(1)
             self.settled_rug = self.settled_rug + u256(1)
             rk = _map_get_u256(self.rep, wk)
             self.rep[wk] = rk - u256(1) if rk > u256(0) else u256(0)
-            self._bump_active(job.writer, -1)
-            self._pay(job.client, job.pay_b)
+
+            # Refund client pay_b + pay_c (restitution)
+            self._pay(job.client, job.pay_b + pay_c)
+            # Pay publisher pay_c from the slashed collateral
             self._pay(job.publisher, pay_c)
+
             job.paid_c = pay_c
-            job.slashed_b = slashed
+            job.slashed_b = pay_c
             self._put(job)
             return
 
@@ -664,11 +822,12 @@ class Makewhole(gl.contract.Contract):
         amt = _map_get_u256(self.credits, k)
         if amt == u256(0):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} no credits")
+        if amt > self.credits_total:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted credits accounting: user credit exceeds credits_total")
         self.credits[k] = u256(0)
-        if self.credits_total >= amt:
-            self.credits_total = self.credits_total - amt
+        self.credits_total = self.credits_total - amt
         try:
-            gl.chain.Account(sender).emit_transfer(value=amt, on="finalized")
+            gl.get_contract_at(sender).emit_transfer(value=amt, on="finalized")
         except Exception:
             self.credits[k] = amt
             self.credits_total = self.credits_total + amt
@@ -693,6 +852,17 @@ class Makewhole(gl.contract.Contract):
     @gl.public.view
     def get_bond(self, addr: str) -> int:
         return int(_map_get_u256(self.bonds, str(addr).lower()))
+
+    @gl.public.view
+    def get_reserved_bond(self, addr: str) -> int:
+        return int(_map_get_u256(self.reserved_bonds, str(addr).lower()))
+
+    @gl.public.view
+    def get_available_bond(self, addr: str) -> int:
+        k = str(addr).lower()
+        tot = _map_get_u256(self.bonds, k)
+        res = _map_get_u256(self.reserved_bonds, k)
+        return int(tot - res if tot >= res else u256(0))
 
     @gl.public.view
     def get_rep(self, addr: str) -> int:
@@ -727,12 +897,34 @@ class Makewhole(gl.contract.Contract):
     @gl.public.view
     def check_bond(self, job_id: str) -> dict:
         job = self._require_job(job_id)
-        bond = _map_get_u256(self.bonds, _addr_key(job.writer))
+        wk = _addr_key(job.writer)
+        total_bond = _map_get_u256(self.bonds, wk)
+        res_bond = _map_get_u256(self.reserved_bonds, wk)
+        avail_bond = total_bond - res_bond if total_bond >= res_bond else u256(0)
+
+        is_collateral_state = job.state in (
+            STATE_BONDED,
+            STATE_IN_FLIGHT,
+            STATE_ACKED,
+            STATE_UNDETERMINED,
+        )
+        is_bonded = (
+            is_collateral_state
+            and job.reserved_bond == job.pay_c
+            and job.pay_c > u256(0)
+            and job.reserved_bond <= res_bond
+            and res_bond <= total_bond
+        )
+
         return {
-            "bonded": int(bond) > 0,
-            "bond": int(bond),
-            "pay_c": int(job.pay_c),
-            "rep": int(_map_get_u256(self.rep, _addr_key(job.writer))),
+            "bonded": is_bonded,
+            "bond": str(int(total_bond)),
+            "total_bond": str(int(total_bond)),
+            "reserved_bond": str(int(res_bond)),
+            "available_bond": str(int(avail_bond)),
+            "job_reserved_bond": str(int(job.reserved_bond)),
+            "pay_c": str(int(job.pay_c)),
+            "rep": int(_map_get_u256(self.rep, wk)),
             "state": job.state,
             "writer": str(job.writer),
         }
@@ -758,87 +950,87 @@ class Makewhole(gl.contract.Contract):
         if job.state in (STATE_SETTLED_OK, STATE_SETTLED_RUG, STATE_CANCELED):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} job already finished")
             
-        try:
-            current_time = int(gl.message.timestamp)
-        except Exception:
-            current_time = 0
-            
-        if current_time > 0 and current_time <= job.deadline:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} deadline not passed")
-            
-        # Time to expire.
+        current_time = _get_trusted_chain_time()
         escrow = job.pay_b + job.pay_c + job.premium
-        if job.state == STATE_OPEN:
-            # Client refunded. Writer unaffected.
-            self._pay(job.client, escrow)
+        wk = _addr_key(job.writer)
+
+        if job.state in (STATE_ACKED, STATE_UNDETERMINED):
+            grace_threshold = int(job.deadline) + SETTLEMENT_GRACE_PERIOD_SEC
+            if current_time <= grace_threshold:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} settlement grace period not passed")
+            
+            if self.locked_jobs < escrow:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_jobs < escrow")
+            self._require_full_job_reservation(job)
+            self._bump_active(job.writer, -1)
+            self._release_bond(job.writer, job.reserved_bond)
+            job.reserved_bond = u256(0)
+            
             self.locked_jobs = self.locked_jobs - escrow
+            self._pay(job.client, escrow)
             job.state = STATE_CANCELED
-            
-        elif job.state == STATE_BONDED:
-            # Writer rugged! Slash bond.
-            wk = _addr_key(job.writer)
-            bond = _map_get_u256(self.bonds, wk)
+            job.reason = "Expired after settlement grace period. Full escrow refunded to client."
+            self._put(job)
+            return
+
+        # For OPEN, BONDED, IN_FLIGHT: deadline check
+        if current_time <= int(job.deadline):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} deadline not passed")
+
+        if job.state == STATE_OPEN:
+            if job.reserved_bond != u256(0):
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted OPEN job reservation: expected 0")
+            if self.locked_jobs < escrow:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_jobs < escrow")
+            self._bump_active(job.writer, -1)
+            self.locked_jobs = self.locked_jobs - escrow
+            self._pay(job.client, escrow)
+            job.state = STATE_CANCELED
+            job.reason = "Expired while open. Full escrow refunded to client."
+            self._put(job)
+            return
+
+        if job.state == STATE_BONDED:
+            # Writer no-show: slash exactly job.pay_c, refund pay_b + pay_c to client, move premium + pay_c to pool
+            if self.locked_jobs < escrow:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_jobs < escrow")
+            self._require_full_job_reservation(job)
+            self._bump_active(job.writer, -1)
             pay_c = job.pay_c
-            from_bond = pay_c if bond >= pay_c else bond
-            from_pool = pay_c - from_bond
-            remain_bond = bond - from_bond
-            slashed = remain_bond
+
+            self._slash_reserved_bond(job.writer, pay_c)
+            job.reserved_bond = u256(0)
             
-            self.bonds[wk] = u256(0)
-            self.locked_bonds = self.locked_bonds - bond
-            if from_pool > u256(0):
-                self.pool = self.pool - from_pool
-            self.pool = self.pool + slashed + job.premium
+            self.pool = self.pool + job.premium + pay_c
             self.locked_jobs = self.locked_jobs - escrow
             self.slash_count = self.slash_count + u256(1)
-            
             rk = _map_get_u256(self.rep, wk)
             self.rep[wk] = rk - u256(1) if rk > u256(0) else u256(0)
+
+            # Refund pay_b + pay_c to client; publisher gets nothing
+            self._pay(job.client, job.pay_b + pay_c)
             
-            self._bump_active(job.writer, -1)
-            self._pay(job.client, job.pay_b)
-            self._pay(job.publisher, pay_c)
-            
-            job.paid_c = pay_c
-            job.slashed_b = slashed
+            job.slashed_b = pay_c
             job.state = STATE_CANCELED
-            
-        elif job.state == STATE_IN_FLIGHT:
-            # Publisher rugged! Client didn't get publication. Writer did work.
-            # Refund publisher's pay_c back to client. Give writer pay_b + their bond back.
-            wk = _addr_key(job.writer)
-            bond = _map_get_u256(self.bonds, wk)
-            
-            # Writer gets bond back
-            self.bonds[wk] = u256(0)
-            self.locked_bonds = self.locked_bonds - bond
-            self._pay(job.writer, bond)
-            
+            job.reason = "Writer no-show expired. Bond slashed; client refunded pay_b+pay_c."
+            self._put(job)
+            return
+
+        if job.state == STATE_IN_FLIGHT:
+            # Publisher no-show: release reservation, pay writer pay_b, refund pay_c to client, move premium to pool
+            if self.locked_jobs < escrow:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} corrupted aggregate accounting: locked_jobs < escrow")
+            self._require_full_job_reservation(job)
+            self._bump_active(job.writer, -1)
+            self._release_bond(job.writer, job.reserved_bond)
+            job.reserved_bond = u256(0)
+
             self.pool = self.pool + job.premium
             self.locked_jobs = self.locked_jobs - escrow
-            
-            self._bump_active(job.writer, -1)
+
             self._pay(job.writer, job.pay_b)
             self._pay(job.client, job.pay_c)
-            
             job.state = STATE_CANCELED
-            
-        elif job.state in (STATE_ACKED, STATE_UNDETERMINED):
-            # Same as IN_FLIGHT, publisher rugged or adjudicator didn't finish.
-            # If it's UNDETERMINED, no one wins, just refund everyone.
-            wk = _addr_key(job.writer)
-            bond = _map_get_u256(self.bonds, wk)
-            
-            self.bonds[wk] = u256(0)
-            self.locked_bonds = self.locked_bonds - bond
-            self._pay(job.writer, bond)
-            
-            self.locked_jobs = self.locked_jobs - escrow
-            self._pay(job.client, escrow)
-            
-            if job.state == STATE_ACKED:
-                self._bump_active(job.writer, -1)
-                
-            job.state = STATE_CANCELED
-
-        self._put(job)
+            job.reason = "Publisher no-show expired. Writer paid; client refunded pay_c."
+            self._put(job)
+            return

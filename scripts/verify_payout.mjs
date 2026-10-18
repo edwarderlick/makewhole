@@ -26,7 +26,11 @@ if (!address) {
   process.exit(1);
 }
 
-const rpc = process.env.GENLAYER_STUDIO_URL || "https://studio-next.genlayer.com/api";
+const rawRpc =
+  process.env.GENLAYER_STUDIO_URL ||
+  process.env.NEXT_PUBLIC_STUDIO_RPC ||
+  "https://studio-dev.genlayer.com/api";
+const rpc = rawRpc.trim().replace(/\/+$/, "");
 
 async function main() {
   let chain;

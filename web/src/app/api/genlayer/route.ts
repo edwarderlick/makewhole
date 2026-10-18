@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCanonicalNetworkConfig, resolveStudioRpcUrl } from "../../../lib/network";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json({ ok: true, rpc: "studio-next", chainId: 61997 });
+  const config = getCanonicalNetworkConfig();
+  return NextResponse.json({
+    ok: true,
+    network: config.networkName,
+    rpcHost: config.rpcHost,
+    chainId: config.chainId,
+  });
 }
 
 export async function POST(req: NextRequest) {
-  const rpc =
-    process.env.GENLAYER_STUDIO_URL ||
-    process.env.NEXT_PUBLIC_STUDIO_RPC ||
-    "https://studio-next.genlayer.com/api";
+  const rpc = resolveStudioRpcUrl();
   // Serverless-safe Studio JSON-RPC proxy (no Docker). Same path works on Vercel.
   try {
     const body = await req.json();
@@ -27,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: response.status });
   } catch (error: any) {
     return NextResponse.json(
-      { error: error?.message || "Studio Next RPC proxy failed" },
+      { error: error?.message || "Studio-dev RPC proxy failed" },
       { status: 502 }
     );
   }
