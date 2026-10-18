@@ -151,17 +151,26 @@ def test_happy_fixture_settled_ok_pays_b_and_c(
 
 
 def test_rug_fixture_pays_c_refunds_a_slashes_b(
-    direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie
+    direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie, direct_accounts
 ):
     contract = _deploy(direct_deploy)
     _fund_and_bond(direct_vm, contract, direct_charlie, direct_bob)
+
+    # Fund unrelated writer to verify their collateral is not slashed
+    direct_dave = direct_accounts[3]
+    direct_vm.sender = direct_dave
+    direct_vm.value = BOND
+    contract.post_bond()
+    direct_vm.value = 0
+
+    pool0 = contract.get_pool()
+    rep0 = contract.get_rep(("0x" + direct_bob.hex()))
+
     job_id = _create(direct_vm, contract, direct_alice, direct_bob, direct_charlie)
     brief_txt = open("tests/fixtures/brief.md", encoding="utf-8").read()
     rug_txt = open("tests/fixtures/rug-write.md", encoding="utf-8").read()
     _mock_pages(direct_vm, brief_txt, RUG, rug_txt)
     _mock_llm(direct_vm, _rug_llm())
-
-    rep0 = contract.get_rep(("0x" + direct_bob.hex()))
 
     direct_vm.sender = direct_bob
     contract.submit(job_id, RUG, "")
@@ -176,15 +185,30 @@ def test_rug_fixture_pays_c_refunds_a_slashes_b(
     assert job["pay_downstream"] is True
     assert job["slash_bps"] == 10000
     assert job["paid_c"] == PAY_C
-    assert job["slashed_b"] == BOND - PAY_C
-    assert contract.get_bond(("0x" + direct_bob.hex())) == 0
+    assert job["slashed_b"] == PAY_C
+    assert contract.get_bond(("0x" + direct_bob.hex())) == BOND - PAY_C
+    assert contract.get_reserved_bond(("0x" + direct_bob.hex())) == 0
+    assert contract.get_available_bond(("0x" + direct_bob.hex())) == BOND - PAY_C
     assert contract.get_rep(("0x" + direct_bob.hex())) == max(rep0 - 1, 0)
+
+    # Unrelated writer collateral is untouched
+    assert contract.get_bond(("0x" + direct_dave.hex())) == BOND
+    assert contract.get_reserved_bond(("0x" + direct_dave.hex())) == 0
+    assert contract.get_available_bond(("0x" + direct_dave.hex())) == BOND
+
     eco = contract.get_economics()
     assert eco["settled_rug"] == 1
     assert eco["slash_count"] == 1
-    assert contract.get_credit(("0x" + direct_alice.hex())) in (0, PAY_B)
-    assert contract.get_credit(("0x" + direct_charlie.hex())) in (0, PAY_C)
     assert eco["locked_jobs"] == 0
+    # Premium accrues to pool
+    assert eco["pool"] == pool0 + PREMIUM
+    # Client restitution is PAY_B + PAY_C; publisher receives PAY_C
+    assert contract.get_credit(("0x" + direct_alice.hex())) in (0, PAY_B + PAY_C)
+    assert contract.get_credit(("0x" + direct_charlie.hex())) in (0, PAY_C)
+
+    # Conservation still holds
+    total_in = pool0 + 2 * BOND + ESCROW
+    assert eco["pool"] + eco["locked_bonds"] + eco["locked_jobs"] + eco["credits"] == total_in
 
 
 def test_404_deliverable_undetermined_no_move(
@@ -297,10 +321,27 @@ def test_ack_from_non_c_reverts(
 
 
 def test_credits_and_withdraw_path(
-    direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie
+    direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie, monkeypatch
 ):
-    """If native emit_transfer credits the fallback map, withdraw clears it."""
+    """If native emit_transfer fails, fallback credits map; withdraw clears it."""
     contract = _deploy(direct_deploy)
+    import sys
+    gl = sys.modules["genlayer"]
+
+    tracker = {"fail": True, "received": {}}
+
+    class MockProxy:
+        def __init__(self, dest):
+            self.dest = dest
+
+        def emit_transfer(self, value=0, on="finalized"):
+            if tracker["fail"]:
+                raise RuntimeError("deliberate transfer failure")
+            val = int(value)
+            k = str(self.dest).lower()
+            tracker["received"][k] = tracker["received"].get(k, 0) + val
+
+    monkeypatch.setattr(gl, "get_contract_at", lambda addr: MockProxy(addr), raising=False)
     _fund_and_bond(direct_vm, contract, direct_charlie, direct_bob)
     job_id = _create(direct_vm, contract, direct_alice, direct_bob, direct_charlie)
     brief_txt = open("tests/fixtures/brief.md", encoding="utf-8").read()
@@ -313,15 +354,22 @@ def test_credits_and_withdraw_path(
     contract.ack_downstream(job_id, "")
     direct_vm.sender = direct_alice
     contract.adjudicate(job_id)
+
+    # Deliberate transfer failure causes fallback credit
     credit_b = contract.get_credit(("0x" + direct_bob.hex()))
-    if credit_b > 0:
-        direct_vm.sender = direct_bob
+    assert credit_b == PAY_B
+
+    # Successful withdraw clears exactly that credit
+    tracker["fail"] = False
+    direct_vm.sender = direct_bob
+    contract.withdraw()
+    assert contract.get_credit(("0x" + direct_bob.hex())) == 0
+    assert tracker["received"][("0x" + direct_bob.hex()).lower()] == PAY_B
+
+    # Repeat withdraw with zero credit reverts
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert("no credits"):
         contract.withdraw()
-        assert contract.get_credit(("0x" + direct_bob.hex())) == 0
-    else:
-        direct_vm.sender = direct_bob
-        with direct_vm.expect_revert():
-            contract.withdraw()
 
 
 def test_check_bond_false_without_post_bond(
@@ -333,9 +381,13 @@ def test_check_bond_false_without_post_bond(
     contract.fund_pool()
     job_id = _create(direct_vm, contract, direct_alice, direct_bob, direct_charlie)
     info = contract.check_bond(job_id)
-    assert info["bonded"] is False
     assert info["state"] == "OPEN"
-    assert info["pay_c"] == PAY_C
+    assert info["bonded"] is False
+    assert int(info["total_bond"]) == 0
+    assert int(info["reserved_bond"]) == 0
+    assert int(info["available_bond"]) == 0
+    assert int(info["job_reserved_bond"]) == 0
+    assert int(info["pay_c"]) == PAY_C
 
 
 def test_equivalence_ignores_reason_text(

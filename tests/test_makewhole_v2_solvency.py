@@ -43,6 +43,32 @@ class FakeMessage:
         self.value = value
 
 
+class MockDatetime(datetime):
+    _current = None
+
+    @classmethod
+    def now(cls, tz=None):
+        if tz is not None:
+            return cls._current.astimezone(tz)
+        return cls._current
+
+
+_mod.datetime = MockDatetime
+
+
+def _set_time(ts_sec: int | float | str | datetime):
+    if isinstance(ts_sec, (int, float)):
+        MockDatetime._current = MockDatetime.fromtimestamp(ts_sec, tz=timezone.utc)
+    elif isinstance(ts_sec, datetime):
+        if type(ts_sec) is not MockDatetime:
+            MockDatetime._current = MockDatetime.fromtimestamp(ts_sec.timestamp(), tz=ts_sec.tzinfo)
+        else:
+            MockDatetime._current = ts_sec
+    else:
+        dt = datetime.fromisoformat(str(ts_sec).replace("Z", "+00:00"))
+        MockDatetime._current = MockDatetime.fromtimestamp(dt.timestamp(), tz=dt.tzinfo)
+
+
 class MockContractProxy:
     def __init__(self, dest: Address, tracker):
         self.dest = dest
@@ -67,10 +93,7 @@ class TransferTracker:
 def _setup_context(monkeypatch, current_time=1_700_000_000):
     tracker = TransferTracker()
 
-    def mock_time():
-        return datetime.fromtimestamp(current_time, tz=timezone.utc)
-
-    monkeypatch.setattr(gl.vm, "get_timestamp", mock_time)
+    _set_time(current_time)
 
     def mock_get_contract_at(addr):
         return MockContractProxy(addr, tracker)
@@ -262,7 +285,7 @@ def test_submit_after_deadline_rejected(monkeypatch):
     j1 = _create_job(contract, tracker, writer=BOB, deadline=dl)
 
     # Fast forward past deadline
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(1_700_000_000 + 5000, tz=timezone.utc))
+    _set_time(1_700_000_000 + 5000)
     _set_caller(contract, tracker, BOB)
     with pytest.raises(gl.vm.UserError) as excinfo:
         contract.submit(j1, DELIVERABLE, "hash123")
@@ -282,7 +305,7 @@ def test_ack_after_deadline_rejected(monkeypatch):
     contract.submit(j1, DELIVERABLE, "hash123")
 
     # Fast forward past deadline
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(1_700_000_000 + 5000, tz=timezone.utc))
+    _set_time(1_700_000_000 + 5000)
     _set_caller(contract, tracker, CHARLIE)
     with pytest.raises(gl.vm.UserError) as excinfo:
         contract.ack_downstream(j1, "https://gist.githubusercontent.com/makewhole/fixtures/raw/pub.md")
@@ -452,7 +475,7 @@ def test_bonded_expiry_does_not_pay_unacknowledged_publisher(monkeypatch):
     j1 = _create_job(contract, tracker, writer=BOB, deadline=dl)
 
     # Fast forward past deadline
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(1_700_000_000 + 5000, tz=timezone.utc))
+    _set_time(1_700_000_000 + 5000)
 
     charlie_key = str(CHARLIE).lower()
     alice_key = str(ALICE).lower()
@@ -489,7 +512,7 @@ def test_in_flight_expiry_pays_writer_and_refunds_client(monkeypatch):
     contract.submit(j1, DELIVERABLE, "hash123")
 
     # Fast forward past deadline without C acknowledging
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(1_700_000_000 + 5000, tz=timezone.utc))
+    _set_time(1_700_000_000 + 5000)
 
     bob_key = str(BOB).lower()
     alice_key = str(ALICE).lower()
@@ -528,7 +551,7 @@ def test_acked_undetermined_cannot_expire_during_settlement_grace(monkeypatch):
     contract.ack_downstream(j1, "https://gist.githubusercontent.com/makewhole/fixtures/raw/pub.md")
 
     # Fast forward past deadline by 1 hour (less than 86400s grace)
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(1_700_000_000 + 7600, tz=timezone.utc))
+    _set_time(1_700_000_000 + 7600)
 
     with pytest.raises(gl.vm.UserError) as excinfo:
         contract.expire(j1)
@@ -559,7 +582,7 @@ def test_undetermined_expiry_after_grace_decrements_writer_active(monkeypatch):
 
     # Fast forward past deadline + 86400s grace
     grace_passed = 1_700_000_000 + 4000 + SETTLEMENT_GRACE_PERIOD_SEC + 10
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(grace_passed, tz=timezone.utc))
+    _set_time(grace_passed)
 
     contract.expire(j1)
     assert contract.get_job(j1)["state"] == "CANCELED"
@@ -622,7 +645,7 @@ def test_conservation_holds_across_expire_open(monkeypatch):
     j1 = _create_job(contract, tracker, writer=BOB, deadline=dl)
     _assert_conservation(contract, tracker)
 
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(1_700_000_000 + 5000, tz=timezone.utc))
+    _set_time(1_700_000_000 + 5000)
     contract.expire(j1)
     _assert_conservation(contract, tracker)
 
@@ -737,7 +760,7 @@ def test_adjudication_grace_exact_boundaries(monkeypatch):
     assert contract.get_job(j1)["state"] == "ACKED"
 
     # Exact boundary 1: current_time == grace_threshold
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(grace_threshold, tz=timezone.utc))
+    _set_time(grace_threshold)
 
     # Expiry at grace_threshold is rejected
     _set_caller(contract, tracker, ALICE)
@@ -752,7 +775,7 @@ def test_adjudication_grace_exact_boundaries(monkeypatch):
 
     # Exact boundary 2: current_time == grace_threshold + 1
     # Create second job j2 in ACKED state
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(t0, tz=timezone.utc))
+    _set_time(t0)
     j2 = _create_job(contract, tracker, writer=BOB, deadline=u256(dl_sec))
     _set_caller(contract, tracker, BOB)
     contract.submit(j2, DELIVERABLE, "")
@@ -761,7 +784,7 @@ def test_adjudication_grace_exact_boundaries(monkeypatch):
     assert contract.get_job(j2)["state"] == "ACKED"
 
     # Set time to 1 second after grace_threshold
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(grace_threshold + 1, tz=timezone.utc))
+    _set_time(grace_threshold + 1)
 
     # Adjudication 1 second after grace_threshold is rejected
     _set_caller(contract, tracker, ALICE)
@@ -835,13 +858,13 @@ def test_open_state_invariant_corruption_checks(monkeypatch):
     assert "[EXPECTED] corrupted OPEN job reservation: expected 0" in str(excinfo.value)
 
     # Subtest 2: expire OPEN job with reserved_bond > 0 reverts
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(dl_sec + 10, tz=timezone.utc))
+    _set_time(dl_sec + 10)
     with pytest.raises(gl.vm.UserError) as excinfo:
         contract.expire(j1)
     assert "[EXPECTED] corrupted OPEN job reservation: expected 0" in str(excinfo.value)
 
     # Subtest 3: post_bond encountering OPEN job with reserved_bond > 0 reverts
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(t0, tz=timezone.utc))
+    _set_time(t0)
     _set_caller(contract, tracker, BOB, BOND)
     with pytest.raises(gl.vm.UserError) as excinfo:
         contract.post_bond()
@@ -901,7 +924,7 @@ def test_central_active_reservation_validator_fail_closed(monkeypatch):
     assert "[EXPECTED] corrupted bond reservation accounting" in str(excinfo.value)
 
     # 3. Expiry from BONDED fails closed
-    monkeypatch.setattr(gl.vm, "get_timestamp", lambda: datetime.fromtimestamp(dl_sec + 10, tz=timezone.utc))
+    _set_time(dl_sec + 10)
     with pytest.raises(gl.vm.UserError) as excinfo:
         contract.expire(j1)
     assert "[EXPECTED] corrupted bond reservation accounting" in str(excinfo.value)

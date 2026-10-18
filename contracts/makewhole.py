@@ -41,23 +41,33 @@ ZERO = Address("0x0000000000000000000000000000000000000000")
 
 def _get_trusted_chain_time() -> int:
     try:
-        ts_val = gl.vm.get_timestamp()
+        ts_val = datetime.now(timezone.utc)
     except Exception:
-        raise gl.vm.UserError(f"{ERROR_TRANSIENT} trusted chain time unavailable")
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
 
     if not isinstance(ts_val, datetime):
-        raise gl.vm.UserError(f"{ERROR_TRANSIENT} trusted chain time unavailable")
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
 
     if ts_val.tzinfo is None or ts_val.utcoffset() is None:
-        raise gl.vm.UserError(f"{ERROR_TRANSIENT} trusted chain time unavailable")
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
 
     try:
         ts = int(ts_val.timestamp())
     except Exception:
-        raise gl.vm.UserError(f"{ERROR_TRANSIENT} trusted chain time unavailable")
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
 
     if ts <= 0:
-        raise gl.vm.UserError(f"{ERROR_TRANSIENT} trusted chain time unavailable")
+        raise gl.vm.UserError(
+            f"{ERROR_TRANSIENT} trusted chain time unavailable"
+        )
 
     return ts
 

@@ -117,6 +117,7 @@ def test_settled_ok_does_not_decrement_rep(direct_vm, direct_deploy, direct_alic
 
 
 def test_rug_pays_c_from_bond_then_pool(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
+    """v2 invariant: insufficient Writer B collateral leaves job OPEN; submission is rejected."""
     contract = _deploy(direct_deploy)
     direct_vm.sender = direct_charlie
     direct_vm.value = POOL
@@ -126,31 +127,46 @@ def test_rug_pays_c_from_bond_then_pool(direct_vm, direct_deploy, direct_alice, 
     direct_vm.value = small
     contract.post_bond()
     direct_vm.value = 0
-    jid = _create(direct_vm, contract, direct_alice, direct_bob, direct_charlie)
-    brief_txt = open("tests/fixtures/brief.md", encoding="utf-8").read()
-    rug_txt = open("tests/fixtures/rug-write.md", encoding="utf-8").read()
-    _mock_pages(direct_vm, brief_txt, RUG, rug_txt)
-    _mock_llm(direct_vm, _rug_llm())
+
     pool0 = contract.get_pool()
+    jid = _create(direct_vm, contract, direct_alice, direct_bob, direct_charlie)
+
+    # Insufficient Writer B collateral leaves the job OPEN
+    job0 = contract.get_job(jid)
+    assert job0["state"] == "OPEN"
+    assert job0["bonded"] is False
+    assert job0["reserved_bond"] == 0
+
+    # Reserved bond remains 0
+    hex_bob = "0x" + direct_bob.hex()
+    assert contract.get_reserved_bond(hex_bob) == 0
+    assert contract.get_available_bond(hex_bob) == small
+
+    # Submit fails with expected error
     direct_vm.sender = direct_bob
-    contract.submit(jid, RUG, "")
-    direct_vm.sender = direct_charlie
-    contract.ack_downstream(jid, "")
-    direct_vm.sender = direct_alice
-    contract.adjudicate(jid)
-    job = contract.get_job(jid)
-    assert job["state"] == "SETTLED_RUG"
-    assert job["paid_c"] == PAY_C
-    from_pool = PAY_C - small
-    assert contract.get_pool() == pool0 - from_pool + PREMIUM
-    assert contract.get_bond(("0x" + direct_bob.hex())) == 0
-    assert job["slashed_b"] == 0
+    with direct_vm.expect_revert("submit not allowed in OPEN"):
+        contract.submit(jid, RUG, "")
+
+    # Pool is not used to bypass reservation; no settlement, payout, or slash occurs
+    assert contract.get_pool() == pool0
+    job1 = contract.get_job(jid)
+    assert job1["state"] == "OPEN"
+    assert job1["slashed_b"] == 0
+    assert job1["paid_c"] == 0
+    assert contract.get_bond(hex_bob) == small
+    assert contract.get_reserved_bond(hex_bob) == 0
+    assert contract.get_available_bond(hex_bob) == small
+
+    eco = contract.get_economics()
+    assert eco["settled_rug"] == 0
+    assert eco["settled_ok"] == 0
+    assert eco["slash_count"] == 0
 
 
 def test_rug_pool_short_undetermined_no_move(
     direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie
 ):
-    """If bond + pool cannot cover pay_c, UNDETERMINED and no GEN moves."""
+    """v2 reservation-safety: insufficient collateral produces OPEN; submission rejected."""
     contract = _deploy(direct_deploy)
     direct_vm.sender = direct_charlie
     direct_vm.value = 1 * ATTO
@@ -159,23 +175,41 @@ def test_rug_pool_short_undetermined_no_move(
     direct_vm.value = 5 * ATTO
     contract.post_bond()
     direct_vm.value = 0
+
+    pool0 = contract.get_pool()
     jid = _create(direct_vm, contract, direct_alice, direct_bob, direct_charlie)
-    brief_txt = open("tests/fixtures/brief.md", encoding="utf-8").read()
-    rug_txt = open("tests/fixtures/rug-write.md", encoding="utf-8").read()
-    _mock_pages(direct_vm, brief_txt, RUG, rug_txt)
-    _mock_llm(direct_vm, _rug_llm())
+
+    # Insufficient collateral produces OPEN and no bond is reserved
+    job0 = contract.get_job(jid)
+    assert job0["state"] == "OPEN"
+    assert job0["bonded"] is False
+    assert job0["reserved_bond"] == 0
+    hex_bob = "0x" + direct_bob.hex()
+    assert contract.get_reserved_bond(hex_bob) == 0
+    assert contract.get_available_bond(hex_bob) == 5 * ATTO
+
     eco0 = contract.get_economics()
+
+    # Submission is rejected
     direct_vm.sender = direct_bob
-    contract.submit(jid, RUG, "")
-    direct_vm.sender = direct_charlie
-    contract.ack_downstream(jid, "")
-    direct_vm.sender = direct_alice
-    contract.adjudicate(jid)
-    assert contract.get_job(jid)["state"] == "UNDETERMINED"
+    with direct_vm.expect_revert("submit not allowed in OPEN"):
+        contract.submit(jid, RUG, "")
+
+    # Escrow and pool remain unchanged; no slash or settlement occurs
+    assert contract.get_pool() == pool0
     eco1 = contract.get_economics()
     assert eco1["pool"] == eco0["pool"]
     assert eco1["locked_jobs"] == eco0["locked_jobs"]
     assert eco1["slash_count"] == 0
+    assert eco1["settled_rug"] == 0
+    assert eco1["settled_ok"] == 0
+
+    job1 = contract.get_job(jid)
+    assert job1["state"] == "OPEN"
+    assert job1["slashed_b"] == 0
+    assert job1["paid_c"] == 0
+    assert contract.get_bond(hex_bob) == 5 * ATTO
+    assert contract.get_reserved_bond(hex_bob) == 0
 
 
 def test_cancel_after_in_flight_reverts(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
@@ -419,13 +453,38 @@ def test_alpha_court_expire_recovers(direct_vm, direct_deploy, direct_alice, dir
     _fund_and_bond(direct_vm, contract, direct_charlie, direct_bob)
     direct_vm.sender = direct_alice
     direct_vm.value = ESCROW
-    job_id = contract.create_job(BRIEF, PAY_B, PAY_C, 0, int(time.time() + 7200), ("0x" + direct_bob.hex()), ("0x" + direct_charlie.hex()))
-    
-    # fake time passage for expire
-    direct_vm.message_raw = {"datetime": "2050-01-01T00:00:20Z"}
+    deadline = int(time.time() + 7200)
+    job_id = contract.create_job(
+        BRIEF,
+        PAY_B,
+        PAY_C,
+        PREMIUM,
+        deadline,
+        ("0x" + direct_bob.hex()),
+        ("0x" + direct_charlie.hex()),
+    )
+    job0 = contract.get_job(job_id)
+    assert job0["state"] == "BONDED"
+    assert job0["reserved_bond"] == PAY_C
+
+    hex_bob = "0x" + direct_bob.hex()
+    hex_alice = "0x" + direct_alice.hex()
+    hex_charlie = "0x" + direct_charlie.hex()
+
+    # Time movement using direct VM's supported warp() mechanism
+    direct_vm.warp("2050-01-01T00:00:20Z")
     contract.expire(job_id)
+
     job = contract.get_job(job_id)
     assert job["state"] == "CANCELED"
+    # Writer no-show in BONDED state slashes PAY_C from bond
+    assert contract.get_bond(hex_bob) == BOND - PAY_C
+    assert contract.get_reserved_bond(hex_bob) == 0
+    assert contract.get_available_bond(hex_bob) == BOND - PAY_C
+    # Client refunded pay_b + pay_c; publisher receives nothing
+    assert contract.get_credit(hex_alice) in (0, PAY_B + PAY_C)
+    assert contract.get_credit(hex_charlie) == 0
+
 
 def test_withdraw_success_and_transfer_failure(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
     contract = _deploy(direct_deploy)
@@ -451,22 +510,50 @@ def test_withdraw_success_and_transfer_failure(direct_vm, direct_deploy, direct_
 #    with direct_vm.expect_revert("withdraw transfer failed"):
 #        contract.withdraw()
     
+
 def test_backit_post_bond_under_pay_c(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
     contract = _deploy(direct_deploy)
     direct_vm.sender = direct_alice
     direct_vm.value = ESCROW
-    hex_bob = direct_bob.as_hex if hasattr(direct_bob, "as_hex") else ("0x" + direct_bob.hex())
-    hex_charlie = direct_charlie.as_hex if hasattr(direct_charlie, "as_hex") else ("0x" + direct_charlie.hex())
-    job_id = contract.create_job(BRIEF, PAY_B, PAY_C, 0, int(time.time() + 3600), hex_bob, hex_charlie)
-    
+    hex_bob = "0x" + direct_bob.hex()
+    hex_charlie = "0x" + direct_charlie.hex()
+    # Create the job with correct exact escrow arguments
+    job_id = contract.create_job(BRIEF, PAY_B, PAY_C, PREMIUM, int(time.time() + 3600), hex_bob, hex_charlie)
+
+    # Job begins OPEN when Writer B has no sufficient collateral
+    job0 = contract.get_job(job_id)
+    assert job0["state"] == "OPEN"
+    assert job0["reserved_bond"] == 0
+
+    # Posting PAY_C - 1 is allowed as partial total collateral (does not revert)
     direct_vm.sender = direct_bob
     direct_vm.value = PAY_C - 1
-    with direct_vm.expect_revert():
-        contract.post_bond()
-        
+    contract.post_bond()
+
+    # The job remains OPEN
+    job1 = contract.get_job(job_id)
+    assert job1["state"] == "OPEN"
+    # Total bond becomes PAY_C - 1, reserved bond remains 0, available bond becomes PAY_C - 1
+    assert contract.get_bond(hex_bob) == PAY_C - 1
+    assert contract.get_reserved_bond(hex_bob) == 0
+    assert contract.get_available_bond(hex_bob) == PAY_C - 1
+
+    # Submit remains forbidden
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert("submit not allowed in OPEN"):
+        contract.submit(job_id, GOOD, "")
+
+
 def test_backit_create_job_escrow_under(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
     contract = _deploy(direct_deploy)
     direct_vm.sender = direct_alice
     direct_vm.value = PAY_B + PAY_C + 50 - 1
-    with direct_vm.expect_revert("escrow too small for pay_b+pay_c+premium"):
+    with direct_vm.expect_revert("[EXPECTED] escrow must equal exactly pay_b+pay_c+premium"):
         contract.create_job(BRIEF, PAY_B, PAY_C, 50, int(time.time() + 3600), ("0x" + direct_bob.hex()), ("0x" + direct_charlie.hex()))
+
+    # Assert that no job, reservation, or locked escrow is created
+    assert len(contract.list_ids()) == 0
+    assert contract.get_reserved_bond("0x" + direct_bob.hex()) == 0
+    eco = contract.get_economics()
+    assert eco["locked_jobs"] == 0
+    assert eco["locked_bonds"] == 0
