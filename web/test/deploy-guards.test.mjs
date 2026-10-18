@@ -40,7 +40,8 @@ import {
   DEPLOYMENT_RELEASES,
   CANONICAL_DEPLOYER_ADDRESS,
 } from "../../scripts/deploy-helpers.mjs";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
+import { privateKeyToAccount } from "viem/accounts";
 
 import {
   parseKeychainArgs,
@@ -3525,15 +3526,47 @@ test("READY plan: contains secure keychain deployment command, --release v2.1, a
 });
 
 test("Ordinary dry-run: ignores dummy GENLAYER_PRIVATE_KEY and loads no signer", () => {
-  const deployScript = resolve(process.cwd(), "scripts", "deploy.mjs");
+  // Post-deployment: deployments/makewhole-v2.1.json is committed in the repository.
+  // The collision guard must block dry-run and exit with code 1 to protect against
+  // duplicate deployment, while still ignoring GENLAYER_PRIVATE_KEY and loading no signer.
+  const repoRoot = existsSync(resolve(process.cwd(), "scripts", "deploy.mjs"))
+    ? process.cwd()
+    : resolve(process.cwd(), "..");
+  const deployScript = resolve(repoRoot, "scripts", "deploy.mjs");
+  const receiptFile = resolve(repoRoot, "deployments", "makewhole-v2.1.json");
+  const pendingFile = resolve(repoRoot, "deployments", "makewhole-v2.1.pending.json");
+  const envFile = resolve(repoRoot, "web", ".env.local");
+
   const dummyKey = "0x" + "a".repeat(64);
-  const out = execSync(`node "${deployScript}" --dry-run --release v2.1`, {
+  const dummyAddress = privateKeyToAccount(dummyKey).address;
+
+  assert.strictEqual(existsSync(receiptFile), true, "Committed v2.1 receipt must exist");
+  assert.strictEqual(existsSync(pendingFile), false, "Pending journal must not exist before run");
+
+  const receiptContentBefore = readFileSync(receiptFile, "utf8");
+  const envContentBefore = existsSync(envFile) ? readFileSync(envFile, "utf8") : "";
+
+  const res = spawnSync(process.execPath, [deployScript, "--dry-run", "--release", "v2.1"], {
+    cwd: repoRoot,
     env: { ...process.env, GENLAYER_PRIVATE_KEY: dummyKey },
     encoding: "utf8",
   });
 
+  const out = (res.stdout || "") + (res.stderr || "");
+
+  assert.strictEqual(res.status, 1, "Dry-run must exit with code 1 due to collision with finalized receipt");
+  assert.match(out, /Selected Release\s+:\s+v2\.1/);
   assert.match(out, /Configured Deployer\s+:\s+\[No signer loaded - dry-run operates without credentials\]/);
-  assert.doesNotMatch(out, new RegExp(dummyKey));
+  assert.match(out, /Collision Status\s+:\s+BLOCKED \(final receipt exists at .*makewhole-v2\.1\.json\)/);
+  assert.match(out, /Deployment Readiness:\s+BLOCKED/);
+  assert.doesNotMatch(out, new RegExp(dummyKey, "i"));
+  assert.doesNotMatch(out, new RegExp(dummyAddress, "i"));
+
+  assert.strictEqual(existsSync(pendingFile), false, "Pending journal must not be created");
+  assert.strictEqual(readFileSync(receiptFile, "utf8"), receiptContentBefore, "Committed receipt must remain byte-identical");
+  if (existsSync(envFile)) {
+    assert.strictEqual(readFileSync(envFile, "utf8"), envContentBefore, "web/.env.local must remain unchanged");
+  }
 });
 
 test("Keychain deployment: balance below 1 GEN fails closed before spawning", async () => {
