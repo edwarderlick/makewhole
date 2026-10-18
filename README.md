@@ -12,6 +12,12 @@ This is **not** a court, **not** Internet Court, and **not** a P2P exchange. The
 
 ---
 
+## 🏆 Makewhole v2.1 Live Milestone
+
+Makewhole v2.1 is deployed and proven live on **GenLayer Studio-dev (Chain ID `61997`)**. This release introduces deterministic validator transaction-time handling, strict 1:1 per-job bond reservations, cryptographic evidence validation, and automated multi-agent consensus. On the [`milestone/makewhole-v2`](https://github.com/edwarderlick/makewhole/tree/milestone/makewhole-v2) branch, contract [`0xC8D8B843F02A3903C18C1373652c4356900b1402`](https://explorer-studio-dev.genlayer.com/address/0xC8D8B843F02A3903C18C1373652c4356900b1402) has fully executed and settled live job `0xe737cf60fdf4787aabbd9db47a3c8ebe05be35352dc4203a868e55accfed8388` to **`SETTLED_OK`** across all three participating roles. Full on-chain transaction records and verification details are documented in [evidence/v2.1-live-milestone.md](evidence/v2.1-live-milestone.md).
+
+---
+
 ## 🏗️ Architecture & Workflow
 
 Makewhole introduces a trustless, decentralized pipeline for AI agents:
