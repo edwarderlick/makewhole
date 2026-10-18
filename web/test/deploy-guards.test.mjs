@@ -35,7 +35,12 @@ import {
   CRITICAL_RELEASE_FILES,
   TX_HASH_REGEX,
   REQUIRED_V2_METHODS,
+  resolveReleaseConfig,
+  DEFAULT_RELEASE,
+  DEPLOYMENT_RELEASES,
+  CANONICAL_DEPLOYER_ADDRESS,
 } from "../../scripts/deploy-helpers.mjs";
+import { execSync } from "node:child_process";
 
 import {
   parseKeychainArgs,
@@ -55,6 +60,7 @@ test("CLI argument parsing: default invocation with no arguments remains dry-run
   assert.deepStrictEqual(result, {
     mode: "dry-run",
     updateEnv: false,
+    release: "v2",
   });
 });
 
@@ -63,6 +69,7 @@ test("CLI argument parsing: explicit --dry-run produces dry-run mode", () => {
   assert.deepStrictEqual(result, {
     mode: "dry-run",
     updateEnv: false,
+    release: "v2",
   });
 });
 
@@ -71,6 +78,7 @@ test("CLI argument parsing: explicit --execute produces execute mode", () => {
   assert.deepStrictEqual(result, {
     mode: "execute",
     updateEnv: false,
+    release: "v2",
   });
 });
 
@@ -79,7 +87,65 @@ test("CLI argument parsing: --execute combined with --update-env is accepted", (
   assert.deepStrictEqual(result, {
     mode: "execute",
     updateEnv: true,
+    release: "v2",
   });
+});
+
+test("CLI argument parsing: omitted --release defaults to v2", () => {
+  const result = parseDeploymentArgs([]);
+  assert.strictEqual(result.release, "v2");
+});
+
+test("CLI argument parsing: explicit v2 selection (both space and equals)", () => {
+  const space = parseDeploymentArgs(["--release", "v2"]);
+  assert.strictEqual(space.release, "v2");
+  const equals = parseDeploymentArgs(["--release=v2"]);
+  assert.strictEqual(equals.release, "v2");
+});
+
+test("CLI argument parsing: explicit v2.1 selection (both space and equals)", () => {
+  const space = parseDeploymentArgs(["--release", "v2.1"]);
+  assert.strictEqual(space.release, "v2.1");
+  const equals = parseDeploymentArgs(["--release=v2.1"]);
+  assert.strictEqual(equals.release, "v2.1");
+});
+
+test("CLI argument parsing: unknown release rejection", () => {
+  assert.throws(() => parseDeploymentArgs(["--release", "v3"]), /Unknown release 'v3'/);
+  assert.throws(() => parseDeploymentArgs(["--release=v1"]), /Unknown release 'v1'/);
+  assert.throws(() => parseDeploymentArgs(["--release", "v2.2"]), /Unknown release 'v2.2'/);
+  assert.throws(() => parseDeploymentArgs(["--release", "latest"]), /Unknown release 'latest'/);
+});
+
+test("CLI argument parsing: duplicate --release rejection", () => {
+  assert.throws(() => parseDeploymentArgs(["--release", "v2", "--release", "v2.1"]), /Duplicate --release argument/);
+  assert.throws(() => parseDeploymentArgs(["--release=v2", "--release=v2.1"]), /Duplicate --release argument/);
+  assert.throws(() => parseDeploymentArgs(["--release", "v2", "--release=v2"]), /Duplicate --release argument/);
+});
+
+test("CLI argument parsing: missing release value rejection", () => {
+  assert.throws(() => parseDeploymentArgs(["--release"]), /Missing value for --release argument/);
+  assert.throws(() => parseDeploymentArgs(["--release="]), /Missing value for --release argument/);
+  assert.throws(() => parseDeploymentArgs(["--release", "--execute"]), /Missing value for --release argument/);
+});
+
+test("CLI argument parsing: traversal/absolute-path rejection", () => {
+  assert.throws(() => parseDeploymentArgs(["--release", "../v2"]), /path traversal and absolute paths are prohibited/);
+  assert.throws(() => parseDeploymentArgs(["--release", "/v2.1"]), /path traversal and absolute paths are prohibited/);
+  assert.throws(() => parseDeploymentArgs(["--release=..\\v2.1"]), /path traversal and absolute paths are prohibited/);
+  assert.throws(() => parseDeploymentArgs(["--release", "C:\\v2"]), /path traversal and absolute paths are prohibited/);
+});
+
+test("Keychain CLI parsing: --release handling and validation", () => {
+  assert.strictEqual(parseKeychainArgs(["--preflight"]).release, "v2");
+  assert.strictEqual(parseKeychainArgs(["--preflight", "--release", "v2.1"]).release, "v2.1");
+  assert.strictEqual(parseKeychainArgs(["--preflight", "--release=v2.1"]).release, "v2.1");
+  assert.strictEqual(parseKeychainArgs(["--preflight", "--release=v2"]).release, "v2");
+  assert.throws(() => parseKeychainArgs(["--preflight", "--release", "v3"]), /Unknown release 'v3'/);
+  assert.throws(() => parseKeychainArgs(["--preflight", "--release", "v2", "--release", "v2.1"]), /Duplicate --release argument/);
+  assert.throws(() => parseKeychainArgs(["--preflight", "--release"]), /Missing value for --release argument/);
+  assert.throws(() => parseKeychainArgs(["--preflight", "--release="]), /Missing value for --release argument/);
+  assert.throws(() => parseKeychainArgs(["--preflight", "--release", "../v2"]), /path traversal and absolute paths are prohibited/);
 });
 
 test("CLI argument parsing: unknown arguments are strictly rejected with exit-worthy error", () => {
@@ -515,13 +581,14 @@ test("Preflight plan & exit code: blocked readiness sets exit code 1, prints blo
   });
 
   assert.match(plan, /Deployment Readiness: BLOCKED/);
-  assert.match(plan, /DO NOT RUN deploy:execute until every required readiness check passes\./);
-  assert.doesNotMatch(plan, /npm run deploy:execute/);
+  assert.match(plan, /DO NOT PROCEED with deployment until every required readiness check passes\./);
+  assert.doesNotMatch(plan, /deploy:execute/);
+  assert.doesNotMatch(plan, /GENLAYER_PRIVATE_KEY/);
   assert.match(plan, /Target network RPC probe failed or timed out\./);
   assert.match(plan, /Deployment transaction fee estimation failed/);
 });
 
-test("Preflight plan & exit code: ready status permits exit 0 and prints deployment command", () => {
+test("Preflight plan & exit code: ready status permits exit 0 and prints secure keychain command", () => {
   const ready = evaluatePreflightReadiness({
     sourceGatePassed: true,
     rpcProbePassed: true,
@@ -539,8 +606,10 @@ test("Preflight plan & exit code: ready status permits exit 0 and prints deploym
   });
 
   assert.match(plan, /Deployment Readiness: READY/);
-  assert.match(plan, /GENLAYER_PRIVATE_KEY=0x\.\.\. npm run deploy:execute/);
-  assert.doesNotMatch(plan, /DO NOT RUN deploy:execute/);
+  assert.match(plan, /node scripts\/deploy-keychain\.mjs --deploy --release v2 --confirm-address 0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf/);
+  assert.doesNotMatch(plan, /GENLAYER_PRIVATE_KEY/);
+  assert.doesNotMatch(plan, /deploy:execute/);
+  assert.doesNotMatch(plan, /DO NOT PROCEED/);
 });
 
 // ============================================================================
@@ -1996,40 +2065,43 @@ test("Recovery: contract schema requires complete 24-method v2 interface", () =>
 });
 
 test("Recovery: source integrity accepts later clean descendant commit with identical contract code", () => {
-  const journal = {
-    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
-    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
-  };
+  const mockDir = createHermeticMockDir(historicalV2Source);
+  try {
+    const journal = {
+      sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+      contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    };
 
-  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+    const mockExecGit = (args) => {
+      const cmd = args.join(" ");
+      if (cmd.includes("rev-parse --verify")) {
+        return "903c08382c0b415ca7067d49085df3128736df25\n";
+      }
+      if (cmd.includes("merge-base --is-ancestor")) {
+        return ""; // Exits 0: is ancestor!
+      }
+      if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+        return historicalV2Source;
+      }
+      if (cmd.includes("show HEAD:contracts/makewhole.py")) {
+        return historicalV2Source;
+      }
+      if (cmd.includes("status --porcelain")) {
+        return ""; // clean!
+      }
+      throw new Error(`Unhandled git command in mock: ${cmd}`);
+    };
 
-  const mockExecGit = (args) => {
-    const cmd = args.join(" ");
-    if (cmd.includes("rev-parse --verify")) {
-      return "903c08382c0b415ca7067d49085df3128736df25\n";
-    }
-    if (cmd.includes("merge-base --is-ancestor")) {
-      return ""; // Exits 0: is ancestor!
-    }
-    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
-      return contractSource;
-    }
-    if (cmd.includes("show HEAD:contracts/makewhole.py")) {
-      return contractSource;
-    }
-    if (cmd.includes("status --porcelain")) {
-      return ""; // clean!
-    }
-    throw new Error(`Unhandled git command in mock: ${cmd}`);
-  };
+    const res = validateRecoverySourceIntegrity({
+      rootPath: mockDir,
+      journal,
+      execGitFn: mockExecGit,
+    });
 
-  const res = validateRecoverySourceIntegrity({
-    rootPath: process.cwd(),
-    journal,
-    execGitFn: mockExecGit,
-  });
-
-  assert.strictEqual(res.passed, true);
+    assert.strictEqual(res.passed, true);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
 });
 
 test("Recovery: source integrity rejects non-ancestor journal commit", () => {
@@ -2086,85 +2158,93 @@ test("Recovery: source integrity rejects non-existent journal commit", () => {
 });
 
 test("Recovery: source integrity rejects modified historical, HEAD, or working contract code", () => {
-  const journal = {
-    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
-    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
-  };
+  const mockDir = createHermeticMockDir(historicalV2Source);
+  try {
+    const journal = {
+      sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+      contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    };
 
-  // Historical mismatch
-  const mockHistMismatch = (args) => {
-    const cmd = args.join(" ");
-    if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
-    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
-      return "# altered historical contract\n";
-    }
-    return "";
-  };
-  assert.throws(
-    () =>
-      validateRecoverySourceIntegrity({
-        rootPath: process.cwd(),
-        journal,
-        execGitFn: mockHistMismatch,
-      }),
-    /Historical contract source .* does not match journal/
-  );
+    // Historical mismatch
+    const mockHistMismatch = (args) => {
+      const cmd = args.join(" ");
+      if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
+      if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+        return "# altered historical contract\n";
+      }
+      return "";
+    };
+    assert.throws(
+      () =>
+        validateRecoverySourceIntegrity({
+          rootPath: mockDir,
+          journal,
+          execGitFn: mockHistMismatch,
+        }),
+      /Historical contract source .* does not match journal/
+    );
 
-  // HEAD mismatch
-  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
-  const mockHeadMismatch = (args) => {
-    const cmd = args.join(" ");
-    if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
-    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
-      return contractSource;
-    }
-    if (cmd.includes("show HEAD:contracts/makewhole.py")) {
-      return "# altered HEAD contract\n";
-    }
-    return "";
-  };
-  assert.throws(
-    () =>
-      validateRecoverySourceIntegrity({
-        rootPath: process.cwd(),
-        journal,
-        execGitFn: mockHeadMismatch,
-      }),
-    /Current HEAD contract source .* does not match journal/
-  );
+    // HEAD mismatch
+    const mockHeadMismatch = (args) => {
+      const cmd = args.join(" ");
+      if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
+      if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+        return historicalV2Source;
+      }
+      if (cmd.includes("show HEAD:contracts/makewhole.py")) {
+        return "# altered HEAD contract\n";
+      }
+      return "";
+    };
+    assert.throws(
+      () =>
+        validateRecoverySourceIntegrity({
+          rootPath: mockDir,
+          journal,
+          execGitFn: mockHeadMismatch,
+        }),
+      /Current HEAD contract source .* does not match journal/
+    );
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
 });
 
 test("Recovery: source integrity rejects dirty critical tracked files", () => {
-  const journal = {
-    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
-    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
-  };
+  const mockDir = createHermeticMockDir(historicalV2Source);
+  try {
+    const journal = {
+      sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+      contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    };
 
-  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
-  const mockDirtyGit = (args) => {
-    const cmd = args.join(" ");
-    if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
-    if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
-      return contractSource;
-    }
-    if (cmd.includes("show HEAD:contracts/makewhole.py")) {
-      return contractSource;
-    }
-    if (cmd.includes("status --porcelain")) {
-      return " M scripts/deploy-helpers.mjs\n";
-    }
-    return "";
-  };
+    const mockDirtyGit = (args) => {
+      const cmd = args.join(" ");
+      if (cmd.includes("rev-parse --verify") || cmd.includes("merge-base --is-ancestor")) return "";
+      if (cmd.includes("show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py")) {
+        return historicalV2Source;
+      }
+      if (cmd.includes("show HEAD:contracts/makewhole.py")) {
+        return historicalV2Source;
+      }
+      if (cmd.includes("status --porcelain")) {
+        return " M scripts/deploy-helpers.mjs\n";
+      }
+      return "";
+    };
 
-  assert.throws(
-    () =>
-      validateRecoverySourceIntegrity({
-        rootPath: process.cwd(),
-        journal,
-        execGitFn: mockDirtyGit,
-      }),
-    /Recovery requires critical tracked files to be clean/
-  );
+    assert.throws(
+      () =>
+        validateRecoverySourceIntegrity({
+          rootPath: mockDir,
+          journal,
+          execGitFn: mockDirtyGit,
+        }),
+      /Recovery requires critical tracked files to be clean/
+    );
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
 });
 
 test("Recovery CLI: parses --confirm-address and --confirm-contract-address (both space and equals)", () => {
@@ -2212,26 +2292,43 @@ test("Recovery CLI: mode flags exclusivity is order-independent and rejects comb
   assert.throws(() => parseKeychainArgs(["--fund", "--fund"]), /Cannot combine mode flags/);
 });
 
+const repoRoot = existsSync(resolve(process.cwd(), "contracts"))
+  ? process.cwd()
+  : resolve(process.cwd(), "..");
+
 const baselineScratchEntries = new Set(
-  existsSync(resolve(process.cwd(), "scratch"))
-    ? readdirSync(resolve(process.cwd(), "scratch"))
+  existsSync(resolve(repoRoot, "scratch"))
+    ? readdirSync(resolve(repoRoot, "scratch"))
     : []
 );
 
+const historicalV2Source = (() => {
+  try {
+    return execSync("git show 903c08382c0b415ca7067d49085df3128736df25:contracts/makewhole.py", {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+  } catch {
+    return readFileSync(resolve(repoRoot, "contracts", "makewhole.py"), "utf8");
+  }
+})();
+
 // Helper for hermetic tests that creates a uniquely generated directory under os.tmpdir()
-function createHermeticMockDir() {
+function createHermeticMockDir(customSource = historicalV2Source) {
   const dir = mkdtempSync(join(tmpdir(), "makewhole-rec-test-"));
   mkdirSync(resolve(dir, "deployments"), { recursive: true });
   mkdirSync(resolve(dir, "web"), { recursive: true });
   mkdirSync(resolve(dir, "contracts"), { recursive: true });
 
-  const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+  const contractSource = customSource !== null
+    ? customSource
+    : readFileSync(resolve(repoRoot, "contracts", "makewhole.py"), "utf8");
   writeFileSync(resolve(dir, "contracts", "makewhole.py"), contractSource);
 
   return dir;
 }
 
-function makeMockGit(contractSource) {
+function makeMockGit(contractSource = historicalV2Source) {
   return (args) => {
     if (args && args[0] === "status") return "";
     return contractSource;
@@ -2314,7 +2411,7 @@ test("Recovery: contract address mismatch rejected BEFORE any local writes", asy
       },
     };
 
-    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+    const contractSource = historicalV2Source;
 
     await assert.rejects(
       async () =>
@@ -2401,7 +2498,7 @@ test("Recovery: reads only the recorded transaction hash and never calls signing
       },
     };
 
-    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+    const contractSource = historicalV2Source;
 
     const res = await executeRecovery({
       confirmAddress: testDeployer,
@@ -2445,7 +2542,7 @@ test("Recovery: failed recovery preserves the pending journal and prints DO NOT 
       },
     };
 
-    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+    const contractSource = historicalV2Source;
 
     await assert.rejects(
       async () =>
@@ -2515,7 +2612,7 @@ test("Recovery: pending deletion failure fails closed, preserves journal, and re
       },
     };
 
-    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+    const contractSource = historicalV2Source;
 
     await assert.rejects(
       async () =>
@@ -2597,7 +2694,7 @@ test("Recovery: successful mocked recovery updates environment and receipt with 
       },
     };
 
-    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+    const contractSource = historicalV2Source;
 
     const res = await executeRecovery({
       confirmAddress: testDeployer,
@@ -2703,7 +2800,7 @@ test("Recovery: idempotent completion after a partial local write verifies on-ch
       },
     };
 
-    const contractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+    const contractSource = historicalV2Source;
 
     const res = await executeRecovery({
       confirmAddress: testDeployer,
@@ -2882,6 +2979,624 @@ test("Recovery: local forged receipt rejected by on-chain verification in receip
   } finally {
     rmSync(mockDir, { recursive: true, force: true });
   }
+});
+
+test("Release Registry: metadata isolation and immutability", () => {
+  assert.strictEqual(DEFAULT_RELEASE, "v2");
+  assert.strictEqual(DEPLOYMENT_RELEASES.v2.version, "v2");
+  assert.strictEqual(DEPLOYMENT_RELEASES.v2.receiptFilename, "makewhole-v2.json");
+  assert.strictEqual(DEPLOYMENT_RELEASES.v2.pendingFilename, "makewhole-v2.pending.json");
+
+  assert.strictEqual(DEPLOYMENT_RELEASES["v2.1"].version, "v2.1");
+  assert.strictEqual(DEPLOYMENT_RELEASES["v2.1"].receiptFilename, "makewhole-v2.1.json");
+  assert.strictEqual(DEPLOYMENT_RELEASES["v2.1"].pendingFilename, "makewhole-v2.1.pending.json");
+
+  assert.throws(() => {
+    DEPLOYMENT_RELEASES.v2.version = "v3";
+  });
+  assert.throws(() => {
+    DEPLOYMENT_RELEASES["v2.1"].version = "v3";
+  });
+});
+
+test("Release Registry: fixed paths cannot escape deployments directory", () => {
+  for (const rel of ["v2", "v2.1"]) {
+    const config = resolveReleaseConfig(rel);
+    assert.strictEqual(config.receiptFilename.includes("/"), false);
+    assert.strictEqual(config.receiptFilename.includes("\\"), false);
+    assert.strictEqual(config.receiptFilename.includes(".."), false);
+    assert.strictEqual(config.pendingFilename.includes("/"), false);
+    assert.strictEqual(config.pendingFilename.includes("\\"), false);
+    assert.strictEqual(config.pendingFilename.includes(".."), false);
+  }
+});
+
+test("Collision Guard: v2 receipt blocks v2 deployment", () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    writeFileSync(resolve(mockDir, "deployments", "makewhole-v2.json"), "{}");
+    assert.throws(
+      () => assertNoDeploymentCollisions({ deploymentsDir: resolve(mockDir, "deployments"), release: "v2" }),
+      /makewhole-v2.json already exists/
+    );
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Collision Guard: v2 receipt does NOT block v2.1 deployment or dry-run", () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    writeFileSync(resolve(mockDir, "deployments", "makewhole-v2.json"), "{}");
+    const result = assertNoDeploymentCollisions({ deploymentsDir: resolve(mockDir, "deployments"), release: "v2.1" });
+    assert.strictEqual(result.release, "v2.1");
+    assert.strictEqual(result.receiptFile, resolve(mockDir, "deployments", "makewhole-v2.1.json"));
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Collision Guard: v2.1 receipt blocks v2.1 deployment", () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    writeFileSync(resolve(mockDir, "deployments", "makewhole-v2.1.json"), "{}");
+    assert.throws(
+      () => assertNoDeploymentCollisions({ deploymentsDir: resolve(mockDir, "deployments"), release: "v2.1" }),
+      /makewhole-v2.1.json already exists/
+    );
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Collision Guard: v2.1 pending journal blocks a second deployment", () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    writeFileSync(resolve(mockDir, "deployments", "makewhole-v2.1.pending.json"), "{}");
+    assert.throws(
+      () => assertNoDeploymentCollisions({ deploymentsDir: resolve(mockDir, "deployments"), release: "v2.1" }),
+      /makewhole-v2.1.pending.json already exists/
+    );
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Validation: cross-release receipt/version mismatch rejection", () => {
+  const baseValidV2 = {
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    networkName: "GenLayer Studio-dev",
+    rpcHost: "studio-dev.genlayer.com",
+    explorerBaseUrl: "https://explorer-studio-dev.genlayer.com",
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    contractAddress: "0xddE116CEb433732C56a9E8FDf50ddF12D741e745",
+    deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    executionResult: "FINISHED_WITH_RETURN",
+    broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+    recoveredAtUtc: "2026-10-17T18:00:00.000Z",
+    sdkVersion: "2.0.0-rc.1",
+  };
+
+  // v2 receipt cannot validate as v2.1
+  assert.throws(
+    () => validateReceiptArtifact(baseValidV2, "v2.1"),
+    /Invalid receipt version 'v2', expected 'v2.1'/
+  );
+
+  // v2.1 receipt cannot validate as v2
+  const baseValidV21 = { ...baseValidV2, version: "v2.1" };
+  assert.throws(
+    () => validateReceiptArtifact(baseValidV21, "v2"),
+    /Invalid receipt version 'v2.1', expected 'v2'/
+  );
+
+  // v2.1 receipt validates as v2.1
+  assert.strictEqual(validateReceiptArtifact(baseValidV21, "v2.1"), true);
+});
+
+test("Validation: cross-release pending journal mismatch rejection", () => {
+  const baseJournal = {
+    project: "makewhole",
+    version: "v2",
+    chainId: 61997,
+    rpcHost: "studio-dev.genlayer.com",
+    deployerAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+    contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+    createdAtUtc: "2026-10-17T17:30:12.025Z",
+    broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+    status: "BROADCAST",
+    deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+  };
+
+  // v2 journal cannot validate as v2.1
+  assert.throws(
+    () => validatePendingJournal(baseJournal, "v2.1"),
+    /Release mismatch: journal has version 'v2', expected 'v2.1'/
+  );
+
+  // v2.1 journal cannot validate as v2
+  const baseJournalV21 = { ...baseJournal, version: "v2.1" };
+  assert.throws(
+    () => validatePendingJournal(baseJournalV21, "v2"),
+    /Release mismatch: journal has version 'v2.1', expected 'v2'/
+  );
+
+  // v2.1 journal validates as v2.1
+  assert.strictEqual(validatePendingJournal(baseJournalV21, "v2.1"), true);
+});
+
+test("Recovery Isolation: v2 recovery cannot consume v2.1 pending journal", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    // Place only v2.1 journal
+    writeFileSync(
+      resolve(mockDir, "deployments", "makewhole-v2.1.pending.json"),
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2.1",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "ae32a87e996798ed56d8046a4df4bc2fb34e0634",
+        contractSourceSha256: "b6fc29958cc2efa5cb340fcfb2b4b932f72841ba1dcc27937609583b6ac6f1b1",
+        createdAtUtc: "2026-10-18T12:00:00.000Z",
+        broadcastAtUtc: "2026-10-18T12:00:02.000Z",
+        status: "BROADCAST",
+        deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+      })
+    );
+
+    // v2 recovery must fail because makewhole-v2.pending.json is missing
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: testDeployer,
+          confirmContractAddress: testContract,
+          release: "v2",
+          rootPath: mockDir,
+        }),
+      /No pending deployment journal found at '.*makewhole-v2\.pending\.json'/
+    );
+
+    // Assert v2.1 journal was untouched
+    assert.strictEqual(existsSync(resolve(mockDir, "deployments", "makewhole-v2.1.pending.json")), true);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery Isolation: v2.1 recovery cannot consume v2 pending journal", async () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0xddE116CEb433732C56a9E8FDf50ddF12D741e745";
+
+    // Place only v2 journal
+    writeFileSync(
+      resolve(mockDir, "deployments", "makewhole-v2.pending.json"),
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "903c08382c0b415ca7067d49085df3128736df25",
+        contractSourceSha256: "0014fa3813dd4465ca73698d9835afc91c4c3e8b04ceed74851ec47bfd75ad45",
+        createdAtUtc: "2026-10-17T17:30:12.025Z",
+        broadcastAtUtc: "2026-10-17T17:30:14.669Z",
+        status: "BROADCAST",
+        deploymentTxHash: "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908",
+      })
+    );
+
+    // v2.1 recovery must fail because makewhole-v2.1.pending.json is missing
+    await assert.rejects(
+      async () =>
+        executeRecovery({
+          confirmAddress: testDeployer,
+          confirmContractAddress: testContract,
+          release: "v2.1",
+          rootPath: mockDir,
+        }),
+      /No pending deployment journal found at '.*makewhole-v2\.1\.pending\.json'/
+    );
+
+    // Assert v2 journal was untouched
+    assert.strictEqual(existsSync(resolve(mockDir, "deployments", "makewhole-v2.pending.json")), true);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Recovery Isolation: v2.1 recovery never deletes another release's pending journal", async () => {
+  const currentContractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+  const mockDir = createHermeticMockDir(currentContractSource);
+  try {
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0x2222222222222222222222222222222222222222";
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+
+    // Place both v2 and v2.1 pending journals
+    const v2JournalPath = resolve(mockDir, "deployments", "makewhole-v2.pending.json");
+    const v21JournalPath = resolve(mockDir, "deployments", "makewhole-v2.1.pending.json");
+
+    writeFileSync(v2JournalPath, JSON.stringify({ project: "makewhole", version: "v2" }));
+    writeFileSync(
+      v21JournalPath,
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2.1",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "ae32a87e996798ed56d8046a4df4bc2fb34e0634",
+        contractSourceSha256: "b6fc29958cc2efa5cb340fcfb2b4b932f72841ba1dcc27937609583b6ac6f1b1",
+        createdAtUtc: "2026-10-18T12:00:00.000Z",
+        broadcastAtUtc: "2026-10-18T12:00:02.000Z",
+        status: "BROADCAST",
+        deploymentTxHash: testTxHash,
+      })
+    );
+    writeFileSync(resolve(mockDir, "web", ".env.local"), "NEXT_PUBLIC_CONTRACT_ADDRESS=0xold\n");
+
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: testContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          type: 1,
+          data: { contract_address: testContract },
+        };
+      },
+      async getContractSchema() {
+        return makeFullV2MockSchema();
+      },
+      async readContract({ functionName }) {
+        if (functionName === "list_ids") return [];
+        if (functionName === "get_economics") {
+          return { pool: 0, locked_bonds: 0, locked_jobs: 0, credits: 0, slash_count: 0, settled_ok: 0, settled_rug: 0 };
+        }
+        return null;
+      },
+    };
+
+    const mockGit = (args) => {
+      const cmd = args.join(" ");
+      if (cmd.includes("status --porcelain")) return "";
+      return currentContractSource;
+    };
+
+    const recResult = await executeRecovery({
+      confirmAddress: testDeployer,
+      confirmContractAddress: testContract,
+      release: "v2.1",
+      rootPath: mockDir,
+      client: mockClient,
+      execGitFn: mockGit,
+    });
+
+    assert.strictEqual(recResult.recovered, true);
+    assert.strictEqual(recResult.contractAddress, testContract);
+    // v2.1 pending journal was removed
+    assert.strictEqual(existsSync(v21JournalPath), false);
+    // v2 pending journal remains PRESERVED
+    assert.strictEqual(existsSync(v2JournalPath), true);
+    // v2.1 final receipt exists
+    const v21Receipt = JSON.parse(readFileSync(resolve(mockDir, "deployments", "makewhole-v2.1.json"), "utf8"));
+    assert.strictEqual(v21Receipt.version, "v2.1");
+    // web/.env.local was updated with v2.1 contract
+    assert.match(readFileSync(resolve(mockDir, "web", ".env.local"), "utf8"), new RegExp(testContract));
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Dry-run Safety: dry-run preflight does not mutate artifacts or environment", () => {
+  const mockDir = createHermeticMockDir();
+  try {
+    const envBefore = "NEXT_PUBLIC_CONTRACT_ADDRESS=0xoriginal\n";
+    writeFileSync(resolve(mockDir, "web", ".env.local"), envBefore);
+    const filesBefore = readdirSync(resolve(mockDir, "deployments"));
+
+    const readiness = evaluatePreflightReadiness({
+      sourceGatePassed: true,
+      rpcProbePassed: true,
+      rpcChainMatched: true,
+      feeEstimatePassed: true,
+      collisionPassed: true,
+    });
+
+    formatDeploymentPlan({
+      readiness,
+      networkName: "GenLayer Studio-dev",
+      chainId: 61997,
+      rpcUrl: "https://studio-dev.genlayer.com/api",
+      historicalV1Status: "REACHABLE",
+      release: "v2.1",
+    });
+
+    const envAfter = readFileSync(resolve(mockDir, "web", ".env.local"), "utf8");
+    const filesAfter = readdirSync(resolve(mockDir, "deployments"));
+
+    assert.strictEqual(envAfter, envBefore);
+    assert.deepStrictEqual(filesAfter, filesBefore);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+// ============================================================================
+// KEYCHAIN RELEASE PROPAGATION & BALANCE HARDENING TESTS
+// ============================================================================
+
+test("Keychain parser: defaults to v2 when --release is omitted", () => {
+  assert.strictEqual(parseKeychainArgs([]).release, "v2");
+  assert.strictEqual(parseKeychainArgs(["--preflight"]).release, "v2");
+});
+
+test("Keychain parser: accepts both v2.1 release syntaxes", () => {
+  assert.strictEqual(parseKeychainArgs(["--preflight", "--release", "v2.1"]).release, "v2.1");
+  assert.strictEqual(parseKeychainArgs(["--preflight", "--release=v2.1"]).release, "v2.1");
+});
+
+test("Keychain preflight: propagates release v2.1 to dry-run execution", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  let capturedArgs = null;
+  const res = await executeKeychainPreflight({
+    keytar: mockKeytar,
+    client: mockClient,
+    release: "v2.1",
+    runDryRunFn: (args) => {
+      capturedArgs = args;
+      return { status: 0 };
+    },
+  });
+
+  assert.strictEqual(res.release, "v2.1");
+  assert.ok(Array.isArray(capturedArgs));
+  assert.strictEqual(capturedArgs.includes("--release"), true);
+  assert.strictEqual(capturedArgs.includes("v2.1"), true);
+  assert.strictEqual(res.dryRunArgs.includes("v2.1"), true);
+});
+
+test("Keychain deployment: propagates release v2.1 to spawned deploy.mjs child arguments", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+  const mockClient = {
+    async getBalance() {
+      return 2_000_000_000_000_000_000n;
+    },
+  };
+
+  let capturedSpawnArgs = null;
+  const res = await executeDeployFromKeychain({
+    keytar: mockKeytar,
+    client: mockClient,
+    confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+    release: "v2.1",
+    spawnFn: (file, args) => {
+      capturedSpawnArgs = args;
+      return { status: 0 };
+    },
+  });
+
+  assert.strictEqual(res.release, "v2.1");
+  assert.ok(Array.isArray(capturedSpawnArgs));
+  assert.strictEqual(capturedSpawnArgs.includes("--release"), true);
+  assert.strictEqual(capturedSpawnArgs.includes("v2.1"), true);
+  assert.strictEqual(res.spawnArgs.includes("v2.1"), true);
+});
+
+test("Keychain recovery: v2.1 recovery remains release-scoped and handles matching journal", async () => {
+  const currentContractSource = readFileSync(resolve(process.cwd(), "contracts", "makewhole.py"), "utf8");
+  const mockDir = createHermeticMockDir(currentContractSource);
+  try {
+    const testDeployer = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+    const testContract = "0x3333333333333333333333333333333333333333";
+    const testTxHash = "0xab2da5a199cf0c70b9edf78b3f57fcfba12f4eaf0af2d5195ead26ee120c2908";
+
+    // Write v2.1 journal
+    writeFileSync(
+      resolve(mockDir, "deployments", "makewhole-v2.1.pending.json"),
+      JSON.stringify({
+        project: "makewhole",
+        version: "v2.1",
+        chainId: 61997,
+        rpcHost: "studio-dev.genlayer.com",
+        deployerAddress: testDeployer,
+        sourceCommit: "ae32a87e996798ed56d8046a4df4bc2fb34e0634",
+        contractSourceSha256: "b6fc29958cc2efa5cb340fcfb2b4b932f72841ba1dcc27937609583b6ac6f1b1",
+        status: "BROADCAST",
+        deploymentTxHash: testTxHash,
+        createdAtUtc: "2026-10-18T10:00:00.000Z",
+        broadcastAtUtc: "2026-10-18T10:00:05.000Z",
+      })
+    );
+
+    // Also place dummy v2 journal
+    writeFileSync(
+      resolve(mockDir, "deployments", "makewhole-v2.pending.json"),
+      JSON.stringify({ project: "makewhole", version: "v2" })
+    );
+
+    const mockClient = {
+      async waitForTransactionReceipt() {
+        return {
+          status_name: "FINALIZED",
+          txExecutionResultName: "FINISHED_WITH_RETURN",
+          recipient: testContract,
+          sender: testDeployer,
+          hash: testTxHash,
+          type: 1,
+          data: { contract_address: testContract },
+        };
+      },
+      async getContractSchema() {
+        return makeFullV2MockSchema();
+      },
+      async readContract({ functionName }) {
+        if (functionName === "list_ids") return [];
+        if (functionName === "get_economics") {
+          return { pool: 0, locked_bonds: 0, locked_jobs: 0, credits: 0, slash_count: 0, settled_ok: 0, settled_rug: 0 };
+        }
+        return null;
+      },
+    };
+
+    const res = await executeRecovery({
+      confirmAddress: testDeployer,
+      confirmContractAddress: testContract,
+      release: "v2.1",
+      rootPath: mockDir,
+      client: mockClient,
+      execGitFn: makeMockGit(currentContractSource),
+    });
+
+    assert.strictEqual(res.recovered, true);
+    assert.strictEqual(res.contractAddress, testContract);
+    assert.strictEqual(existsSync(resolve(mockDir, "deployments", "makewhole-v2.1.pending.json")), false);
+    assert.strictEqual(existsSync(resolve(mockDir, "deployments", "makewhole-v2.1.json")), true);
+    assert.strictEqual(existsSync(resolve(mockDir, "deployments", "makewhole-v2.pending.json")), true);
+  } finally {
+    rmSync(mockDir, { recursive: true, force: true });
+  }
+});
+
+test("Keychain dispatcher: formatPreflightReport reflects release v2.1", () => {
+  const report = formatPreflightReport({
+    accountExists: true,
+    publicAddress: "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf",
+    release: "v2.1",
+  });
+  assert.match(report, /MAKEWHOLE V2\.1 KEYCHAIN OPERATOR PREFLIGHT/);
+  assert.match(report, /Selected Release\s+:\s+v2\.1/);
+  assert.doesNotMatch(report, /MAKEWHOLE v2 /);
+});
+
+test("READY plan: contains secure keychain deployment command, --release v2.1, and required confirm address", () => {
+  const ready = evaluatePreflightReadiness({
+    sourceGatePassed: true,
+    rpcProbePassed: true,
+    rpcChainMatched: true,
+    feeEstimatePassed: true,
+    collisionPassed: true,
+  });
+
+  const plan = formatDeploymentPlan({
+    readiness: ready,
+    networkName: "GenLayer Studio-dev",
+    chainId: 61997,
+    rpcUrl: "https://studio-dev.genlayer.com/api",
+    historicalV1Status: "REACHABLE",
+    release: "v2.1",
+    confirmAddress: CANONICAL_DEPLOYER_ADDRESS,
+  });
+
+  assert.match(plan, /Deployment Readiness: READY/);
+  assert.match(plan, /node scripts\/deploy-keychain\.mjs --deploy --release v2\.1 --confirm-address 0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf/);
+  assert.doesNotMatch(plan, /GENLAYER_PRIVATE_KEY/);
+  assert.doesNotMatch(plan, /deploy:execute/);
+});
+
+test("Ordinary dry-run: ignores dummy GENLAYER_PRIVATE_KEY and loads no signer", () => {
+  const deployScript = resolve(process.cwd(), "scripts", "deploy.mjs");
+  const dummyKey = "0x" + "a".repeat(64);
+  const out = execSync(`node "${deployScript}" --dry-run --release v2.1`, {
+    env: { ...process.env, GENLAYER_PRIVATE_KEY: dummyKey },
+    encoding: "utf8",
+  });
+
+  assert.match(out, /Configured Deployer\s+:\s+\[No signer loaded - dry-run operates without credentials\]/);
+  assert.doesNotMatch(out, new RegExp(dummyKey));
+});
+
+test("Keychain deployment: balance below 1 GEN fails closed before spawning", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+  const mockClient = {
+    async getBalance() {
+      // 0.5 GEN (below 1 GEN)
+      return 500_000_000_000_000_000n;
+    },
+  };
+
+  let spawnCalled = false;
+  await assert.rejects(
+    async () =>
+      executeDeployFromKeychain({
+        keytar: mockKeytar,
+        client: mockClient,
+        confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+        release: "v2.1",
+        spawnFn: () => {
+          spawnCalled = true;
+          return { status: 0 };
+        },
+      }),
+    /insufficient balance.*Required target is 1 GEN.*Exact deficit: 500000000000000000 wei/
+  );
+  assert.strictEqual(spawnCalled, false);
+});
+
+test("Keychain deployment: balance exactly 1 GEN may reach mocked spawn step", async () => {
+  const deployerKey = "0x1111111111111111111111111111111111111111111111111111111111111111";
+  const mockKeytar = {
+    async getPassword(service, account) {
+      return deployerKey;
+    },
+  };
+  const mockClient = {
+    async getBalance() {
+      // Exactly 1 GEN
+      return 1_000_000_000_000_000_000n;
+    },
+  };
+
+  let spawnCalled = false;
+  const res = await executeDeployFromKeychain({
+    keytar: mockKeytar,
+    client: mockClient,
+    confirmAddress: "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+    release: "v2.1",
+    spawnFn: (file, args) => {
+      spawnCalled = true;
+      return { status: 0 };
+    },
+  });
+
+  assert.strictEqual(spawnCalled, true);
+  assert.strictEqual(res.exitCode, 0);
+  assert.strictEqual(res.release, "v2.1");
 });
 
 test("Hermeticity check: no test files or directories created in repository scratch/", () => {

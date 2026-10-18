@@ -13,6 +13,9 @@ import {
   executeRecovery,
   MAX_TARGET_DEPLOYER_BALANCE_GEN,
   MAX_TARGET_DEPLOYER_BALANCE_WEI,
+  resolveReleaseConfig,
+  DEFAULT_RELEASE,
+  DEPLOYMENT_RELEASES,
 } from "./deploy-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -100,6 +103,8 @@ export function parseKeychainArgs(args = process.argv.slice(2)) {
     "--preflight",
   ]);
 
+  let rawRelease = null;
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (MODE_FLAGS.has(arg)) {
@@ -125,14 +130,33 @@ export function parseKeychainArgs(args = process.argv.slice(2)) {
       confirmContractAddress = args[i];
     } else if (arg.startsWith("--confirm-contract-address=")) {
       confirmContractAddress = arg.slice("--confirm-contract-address=".length);
+    } else if (arg === "--release") {
+      if (rawRelease !== null) {
+        throw new Error("Duplicate --release argument specified.");
+      }
+      i++;
+      if (i >= args.length || !args[i] || args[i].startsWith("--")) {
+        throw new Error("Missing value for --release argument.");
+      }
+      rawRelease = args[i];
+    } else if (arg.startsWith("--release=")) {
+      if (rawRelease !== null) {
+        throw new Error("Duplicate --release argument specified.");
+      }
+      const val = arg.slice("--release=".length);
+      if (!val) {
+        throw new Error("Missing value for --release argument.");
+      }
+      rawRelease = val;
     } else {
       throw new Error(`Unknown argument '${arg}'.`);
     }
   }
 
   const mode = explicitMode || "preflight";
+  const releaseConfig = resolveReleaseConfig(rawRelease || DEFAULT_RELEASE);
 
-  return { mode, confirmAddress, confirmContractAddress };
+  return { mode, confirmAddress, confirmContractAddress, release: releaseConfig.release };
 }
 
 /**
@@ -205,11 +229,14 @@ export function formatPreflightReport({
   balanceWei = null,
   deficitInfo = null,
   rpcHost = "studio-dev.genlayer.com",
+  release = DEFAULT_RELEASE,
 }) {
+  const releaseConfig = resolveReleaseConfig(release);
   const lines = [];
   lines.push("======================================================================");
-  lines.push("MAKEWHOLE v2 KEYCHAIN OPERATOR PREFLIGHT");
+  lines.push(`MAKEWHOLE ${releaseConfig.release.toUpperCase()} KEYCHAIN OPERATOR PREFLIGHT`);
   lines.push("======================================================================");
+  lines.push(`Selected Release  : ${releaseConfig.release}`);
   lines.push(`Keychain Service  : ${KEYCHAIN_SERVICE}`);
   lines.push(`Account Entry     : ${DEPLOYER_KEYCHAIN_KEY}`);
   lines.push(`Account Exists    : ${accountExists ? "YES" : "NO"}`);
@@ -253,7 +280,9 @@ export async function executeKeychainPreflight({
   runDryRunFn = null,
   service = KEYCHAIN_SERVICE,
   deployerKey = DEPLOYER_KEYCHAIN_KEY,
+  release = DEFAULT_RELEASE,
 }) {
+  const releaseConfig = resolveReleaseConfig(release);
   const rawKey = await keytar.getPassword(service, deployerKey);
   const accountExists = rawKey !== null && rawKey !== undefined && rawKey !== "";
 
@@ -294,15 +323,19 @@ export async function executeKeychainPreflight({
     publicAddress,
     balanceWei,
     deficitInfo,
+    release: releaseConfig.release,
   });
   console.log(report);
 
-  // Run ordinary deployment dry-run
+  // Run ordinary deployment dry-run for selected release
   console.log("\nExecuting ordinary deployment dry-run...\n");
+  const deployScript = resolve(root, "scripts", "deploy.mjs");
+  const dryRunArgs = [deployScript, "--dry-run", "--release", releaseConfig.release];
+
   let dryRunRes;
   if (runDryRunFn) {
     try {
-      const fnRes = runDryRunFn();
+      const fnRes = runDryRunFn(dryRunArgs);
       if (typeof fnRes === "number") {
         dryRunRes = { status: fnRes };
       } else if (fnRes && typeof fnRes === "object") {
@@ -317,8 +350,7 @@ export async function executeKeychainPreflight({
       dryRunRes = { status: null, error: e };
     }
   } else {
-    const deployScript = resolve(root, "scripts", "deploy.mjs");
-    dryRunRes = spawnSync(process.execPath, [deployScript, "--dry-run"], { stdio: "inherit" });
+    dryRunRes = spawnSync(process.execPath, dryRunArgs, { stdio: "inherit" });
   }
 
   // Summary footer & readiness evaluation
@@ -333,9 +365,10 @@ export async function executeKeychainPreflight({
   });
 
   console.log("\n======================================================================");
-  console.log("KEYCHAIN OPERATOR READINESS SUMMARY");
+  console.log(`KEYCHAIN OPERATOR READINESS SUMMARY (${releaseConfig.release.toUpperCase()})`);
   console.log("======================================================================");
-  console.log(`Keychain Operator Readiness: ${readinessRes.readiness}`);
+  console.log(`Selected Release            : ${releaseConfig.release}`);
+  console.log(`Keychain Operator Readiness : ${readinessRes.readiness}`);
   if (!readinessRes.ready) {
     console.log("Blockers:");
     readinessRes.blockers.forEach((b) => console.log(`  - ${b}`));
@@ -346,11 +379,13 @@ export async function executeKeychainPreflight({
   console.log("======================================================================\n");
 
   return {
+    release: releaseConfig.release,
     accountExists,
     publicAddress,
     balanceWei,
     deficitInfo,
     dryRunRes,
+    dryRunArgs,
     readiness: readinessRes.readiness,
     ready: readinessRes.ready,
     exitCode: readinessRes.exitCode,
@@ -507,6 +542,7 @@ export async function executeFundDeployer({
 export async function executeDeployFromKeychain({
   keytar,
   confirmAddress,
+  release = DEFAULT_RELEASE,
   client = null,
   service = KEYCHAIN_SERVICE,
   deployerKey = DEPLOYER_KEYCHAIN_KEY,
@@ -532,13 +568,20 @@ export async function executeDeployFromKeychain({
   });
 
   const balance = await genClient.getBalance({ address: deployerAccount.address });
-  if (balance <= 0n) {
-    throw new Error(
-      `Deployer account ${deployerAccount.address} has 0 balance. Account must be funded before deployment.`
+  const deficitInfo = calculateFundingDeficit(balance, MAX_TARGET_DEPLOYER_BALANCE_GEN);
+  if (deficitInfo.needsFunding || balance < MAX_TARGET_DEPLOYER_BALANCE_WEI) {
+    const err = new Error(
+      `Deployer account ${deployerAccount.address} has insufficient balance (${balance.toString()} wei). Required target is 1 GEN (${MAX_TARGET_DEPLOYER_BALANCE_WEI.toString()} wei). Exact deficit: ${deficitInfo.deficitWei.toString()} wei. Account must be funded before deployment.`
     );
+    err.currentBalanceWei = balance;
+    err.requiredBalanceWei = MAX_TARGET_DEPLOYER_BALANCE_WEI;
+    err.deficitWei = deficitInfo.deficitWei;
+    throw err;
   }
 
+  const releaseConfig = resolveReleaseConfig(release);
   const deployScript = resolve(rootPath, "scripts", "deploy.mjs");
+  const childArgs = [deployScript, "--execute", "--update-env", "--release", releaseConfig.release];
   const childEnv = {
     ...process.env,
     GENLAYER_PRIVATE_KEY: normDeployerKey,
@@ -548,7 +591,7 @@ export async function executeDeployFromKeychain({
 
   let childRes;
   try {
-    childRes = spawnFn(process.execPath, [deployScript, "--execute", "--update-env"], {
+    childRes = spawnFn(process.execPath, childArgs, {
       stdio: "inherit",
       env: childEnv,
     });
@@ -577,6 +620,8 @@ export async function executeDeployFromKeychain({
   return {
     deployerAddress: deployerAccount.address,
     exitCode: 0,
+    release: releaseConfig.release,
+    spawnArgs: childArgs,
   };
 }
 
@@ -590,14 +635,14 @@ async function main() {
     process.exit(1);
   }
 
-  const { mode, confirmAddress, confirmContractAddress } = parsed;
+  const { mode, confirmAddress, confirmContractAddress, release } = parsed;
 
   if (mode === "recover") {
     console.log("======================================================================");
-    console.log("MAKEWHOLE v2 KEYCHAIN OPERATOR: RECOVER DEPLOYMENT");
+    console.log(`MAKEWHOLE ${release.toUpperCase()} KEYCHAIN OPERATOR: RECOVER DEPLOYMENT`);
     console.log("======================================================================");
     try {
-      const res = await executeRecovery({ confirmAddress, confirmContractAddress });
+      const res = await executeRecovery({ confirmAddress, confirmContractAddress, release });
       console.log(`\n[SUCCESS] Deployment successfully recovered.`);
       console.log(`Contract Address : ${res.contractAddress}`);
       console.log(`Transaction Hash : ${res.deploymentTxHash}`);
@@ -659,10 +704,10 @@ async function main() {
 
   if (mode === "deploy") {
     console.log("======================================================================");
-    console.log("MAKEWHOLE v2 KEYCHAIN OPERATOR: DEPLOY");
+    console.log(`MAKEWHOLE ${release.toUpperCase()} KEYCHAIN OPERATOR: DEPLOY`);
     console.log("======================================================================");
     try {
-      const res = await executeDeployFromKeychain({ keytar, confirmAddress });
+      const res = await executeDeployFromKeychain({ keytar, confirmAddress, release });
       process.exit(res.exitCode);
     } catch (e) {
       console.error(`Deployment Error: ${e.message}`);
@@ -673,7 +718,7 @@ async function main() {
 
   // Default mode: preflight
   try {
-    const res = await executeKeychainPreflight({ keytar });
+    const res = await executeKeychainPreflight({ keytar, release });
     process.exit(res.exitCode);
   } catch (e) {
     console.error(`Preflight Error: ${e.message}`);

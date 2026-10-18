@@ -24,6 +24,9 @@ import {
   RECEIPT_FILENAME,
   PENDING_JOURNAL_FILENAME,
   CRITICAL_RELEASE_FILES,
+  resolveReleaseConfig,
+  DEFAULT_RELEASE,
+  DEPLOYMENT_RELEASES,
 } from "./deploy-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,7 +51,7 @@ const SUPPORTED_CHAINS = {
   },
 };
 
-function getGitReleaseStatus() {
+function getGitReleaseStatus(isDryRun = false) {
   let headCommit = null;
   try {
     headCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
@@ -65,7 +68,8 @@ function getGitReleaseStatus() {
 
   let porcelainStatus = "";
   try {
-    porcelainStatus = execFileSync("git", ["status", "--porcelain", "--", ...CRITICAL_RELEASE_FILES], {
+    const filesToCheck = isDryRun ? ["contracts/makewhole.py"] : CRITICAL_RELEASE_FILES;
+    porcelainStatus = execFileSync("git", ["status", "--porcelain", "--", ...filesToCheck], {
       cwd: root,
       encoding: "utf8",
     });
@@ -225,9 +229,12 @@ async function main() {
     process.exit(1);
   }
 
-  const { mode, updateEnv } = parsedArgs;
+  const { mode, updateEnv, release } = parsedArgs;
+  const releaseConfig = resolveReleaseConfig(release);
   const isExecute = mode === "execute";
   const isDryRun = mode === "dry-run";
+  const receiptFile = resolve(deploymentsDir, releaseConfig.receiptFilename);
+  const pendingFile = resolve(deploymentsDir, releaseConfig.pendingFilename);
 
   // 2. Resolve Network & Chain Configuration
   const rawChainId = process.env.GENLAYER_CHAIN_ID || "61997";
@@ -257,7 +264,7 @@ async function main() {
   const workingCode = readFileSync(contractFile, "utf8");
 
   // 4. Committed-source reproducibility check
-  const gitStatus = getGitReleaseStatus();
+  const gitStatus = getGitReleaseStatus(isDryRun);
   const gate = checkReleaseSourceGate({
     headCommit: gitStatus.headCommit,
     committedCode: gitStatus.committedCode,
@@ -268,7 +275,7 @@ async function main() {
   const sdkVersion = getSdkVersion();
   const viemVersion = getViemVersion();
 
-  // Validate Private Key if executing
+  // Validate Private Key ONLY if executing (internal interface for keychain wrapper)
   let account = null;
   if (isExecute) {
     const rawKey = process.env.GENLAYER_PRIVATE_KEY;
@@ -283,19 +290,33 @@ async function main() {
       process.exit(1);
     }
     account = privateKeyToAccount(rawKey);
-  } else if (process.env.GENLAYER_PRIVATE_KEY) {
-    // Optional check in dry-run if configured
-    if (/^0x[0-9a-fA-F]{64}$/.test(process.env.GENLAYER_PRIVATE_KEY)) {
-      account = privateKeyToAccount(process.env.GENLAYER_PRIVATE_KEY);
-    }
   }
 
   // DRY-RUN MODE
   if (isDryRun) {
+    // Check collision for selected release
+    let collisionPassed = true;
+    let collisionBlocker = null;
+    let collisionStatusText = "PASS (no collision detected)";
+
+    if (existsSync(receiptFile)) {
+      collisionPassed = false;
+      collisionBlocker = `Deployment artifact ${receiptFile} already exists. Execution refused to prevent duplicate deployment.`;
+      collisionStatusText = `BLOCKED (final receipt exists at ${receiptFile})`;
+    } else if (existsSync(pendingFile)) {
+      collisionPassed = false;
+      collisionBlocker = `Pending deployment journal ${pendingFile} already exists. An earlier deployment may be in flight or interrupted. DO NOT REDEPLOY. Inspect or resume the pending transaction first.`;
+      collisionStatusText = `BLOCKED (pending journal exists at ${pendingFile})`;
+    }
+
     console.log("======================================================================");
-    console.log("MAKEWHOLE v2 DEPLOYMENT PREFLIGHT (DRY-RUN)");
+    console.log(`MAKEWHOLE ${releaseConfig.release.toUpperCase()} DEPLOYMENT PREFLIGHT (DRY-RUN)`);
     console.log("======================================================================");
     console.log(`Execution Mode           : DRY-RUN (read-only, no write/deploy submitted)`);
+    console.log(`Selected Release         : ${releaseConfig.release}`);
+    console.log(`Pending Journal Path     : ${pendingFile}`);
+    console.log(`Final Receipt Path       : ${receiptFile}`);
+    console.log(`Collision Status         : ${collisionStatusText}`);
     console.log(`Target Network           : ${network.name}`);
     console.log(`Chain ID                 : ${chainId}`);
     console.log(`RPC Endpoint             : ${rpcUrl}`);
@@ -308,11 +329,7 @@ async function main() {
     console.log(`Release Source Gate      : ${gate.passed ? "PASS" : "BLOCKED"}`);
     console.log(`GenLayer SDK Version     : ${sdkVersion}`);
     console.log(`Viem Version             : ${viemVersion}`);
-    if (account) {
-      console.log(`Configured Deployer      : ${account.address}`);
-    } else {
-      console.log(`Configured Deployer      : [Not configured in environment - ordinary dry-run]`);
-    }
+    console.log(`Configured Deployer      : [No signer loaded - dry-run operates without credentials]`);
 
     if (!gate.passed) {
       console.log("\n[RELEASE SOURCE GATE BLOCKED]");
@@ -413,6 +430,8 @@ async function main() {
       rpcChainMatched,
       feeEstimatePassed,
       historicalV1Passed: v1ProbePassed,
+      collisionPassed,
+      collisionBlocker,
     });
 
     console.log(
@@ -422,6 +441,7 @@ async function main() {
         chainId,
         rpcUrl,
         historicalV1Status,
+        release: releaseConfig.release,
       })
     );
 
@@ -431,7 +451,7 @@ async function main() {
 
   // EXECUTE MODE
   console.log("======================================================================");
-  console.log("MAKEWHOLE v2 DEPLOYMENT EXECUTION");
+  console.log(`MAKEWHOLE ${releaseConfig.release.toUpperCase()} DEPLOYMENT EXECUTION`);
   console.log("======================================================================");
 
   // 1. Release Source Gate Check
@@ -445,12 +465,11 @@ async function main() {
   // 2. Pre-broadcast collision checks (both final receipt and pending journal)
   let collisionInfo;
   try {
-    collisionInfo = assertNoDeploymentCollisions({ deploymentsDir });
+    collisionInfo = assertNoDeploymentCollisions({ deploymentsDir, release: releaseConfig.release });
   } catch (e) {
     console.error(`Error: ${e.message}`);
     process.exit(1);
   }
-  const { receiptFile, pendingFile } = collisionInfo;
 
   // 3. Enforce network identity via read-only eth_chainId probe
   console.log("Verifying network identity via read-only eth_chainId probe...");
@@ -539,7 +558,7 @@ async function main() {
   // Atomically write non-secret pending intent before broadcasting
   const pendingIntent = createPendingJournalIntent({
     project: "makewhole",
-    version: "v2",
+    release: releaseConfig.release,
     chainId,
     rpcHost: new URL(rpcUrl).hostname,
     deployerAddress: account.address,
@@ -622,7 +641,7 @@ async function main() {
   // 8. Atomic receipt creation
   const receiptArtifact = {
     project: "makewhole",
-    version: "v2",
+    version: releaseConfig.version,
     chainId,
     networkName: network.name,
     rpcHost: new URL(rpcUrl).hostname,

@@ -26,6 +26,52 @@ export const TARGET_ENV_KEYS = [
   "GENLAYER_STUDIO_URL",
 ];
 
+export const DEFAULT_RELEASE = "v2";
+
+export const DEPLOYMENT_RELEASES = Object.freeze({
+  "v2": Object.freeze({
+    release: "v2",
+    version: "v2",
+    receiptFilename: "makewhole-v2.json",
+    pendingFilename: "makewhole-v2.pending.json",
+  }),
+  "v2.1": Object.freeze({
+    release: "v2.1",
+    version: "v2.1",
+    receiptFilename: "makewhole-v2.1.json",
+    pendingFilename: "makewhole-v2.1.pending.json",
+  }),
+});
+
+export function resolveReleaseConfig(rawRelease) {
+  if (rawRelease === undefined || rawRelease === null) {
+    return DEPLOYMENT_RELEASES[DEFAULT_RELEASE];
+  }
+  if (typeof rawRelease !== "string") {
+    throw new Error(`Invalid release: expected a string, got ${typeof rawRelease}.`);
+  }
+  const trimmed = rawRelease.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Invalid release: release identifier cannot be empty.");
+  }
+  if (
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("..") ||
+    trimmed.startsWith(".") ||
+    trimmed.includes(":")
+  ) {
+    throw new Error(`Invalid release '${rawRelease}': path traversal and absolute paths are prohibited.`);
+  }
+  const config = DEPLOYMENT_RELEASES[trimmed];
+  if (!config) {
+    throw new Error(
+      `Unknown release '${rawRelease}'. Allowed releases: ${Object.keys(DEPLOYMENT_RELEASES).join(", ")}.`
+    );
+  }
+  return config;
+}
+
 export const REQUIRED_V2_METHODS = [
   "ack_downstream",
   "adjudicate",
@@ -76,31 +122,60 @@ export const REQUIRED_ZERO_ECONOMICS = [
 
 /**
  * Parses and strictly validates CLI arguments for scripts/deploy.mjs.
- * Only --dry-run, --execute, and --update-env are accepted.
+ * Only --dry-run, --execute, --update-env, and --release are accepted.
  */
 export function parseDeploymentArgs(argv) {
-  const allowedFlags = new Set(["--dry-run", "--execute", "--update-env"]);
-  for (const arg of argv) {
-    if (!allowedFlags.has(arg)) {
-      throw new Error(`Unknown argument '${arg}'. Allowed flags: --dry-run, --execute, --update-env.`);
+  let mode = null;
+  let updateEnv = false;
+  let rawRelease = null;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--dry-run") {
+      if (mode === "execute") {
+        throw new Error("Cannot combine --dry-run and --execute. Please choose one mode.");
+      }
+      mode = "dry-run";
+    } else if (arg === "--execute") {
+      if (mode === "dry-run") {
+        throw new Error("Cannot combine --dry-run and --execute. Please choose one mode.");
+      }
+      mode = "execute";
+    } else if (arg === "--update-env") {
+      updateEnv = true;
+    } else if (arg === "--release") {
+      if (rawRelease !== null) {
+        throw new Error("Duplicate --release argument specified.");
+      }
+      i++;
+      if (i >= argv.length || !argv[i] || argv[i].startsWith("--")) {
+        throw new Error("Missing value for --release argument.");
+      }
+      rawRelease = argv[i];
+    } else if (arg.startsWith("--release=")) {
+      if (rawRelease !== null) {
+        throw new Error("Duplicate --release argument specified.");
+      }
+      const val = arg.slice("--release=".length);
+      if (!val) {
+        throw new Error("Missing value for --release argument.");
+      }
+      rawRelease = val;
+    } else {
+      throw new Error(`Unknown argument '${arg}'. Allowed flags: --dry-run, --execute, --update-env, --release.`);
     }
   }
 
-  const hasDryRun = argv.includes("--dry-run");
-  const hasExecute = argv.includes("--execute");
-  const hasUpdateEnv = argv.includes("--update-env");
-
-  if (hasDryRun && hasExecute) {
-    throw new Error("Cannot combine --dry-run and --execute. Please choose one mode.");
-  }
-
-  if (hasUpdateEnv && !hasExecute) {
+  if (updateEnv && mode !== "execute") {
     throw new Error("--update-env can only be specified when --execute is active.");
   }
 
+  const releaseConfig = resolveReleaseConfig(rawRelease || DEFAULT_RELEASE);
+
   return {
-    mode: hasExecute ? "execute" : "dry-run",
-    updateEnv: hasUpdateEnv,
+    mode: mode || "dry-run",
+    updateEnv,
+    release: releaseConfig.release,
   };
 }
 
@@ -548,11 +623,17 @@ export function evaluatePreflightReadiness({
   rpcChainMatched = false,
   feeEstimatePassed = false,
   historicalV1Passed = true,
+  collisionPassed = true,
+  collisionBlocker = null,
 } = {}) {
   const blockers = [];
 
   if (!sourceGatePassed) {
     blockers.push("Release source gate check failed: working contract source does not match committed HEAD or repository is dirty.");
+  }
+
+  if (!collisionPassed) {
+    blockers.push(collisionBlocker || "Deployment artifact collision detected for selected release.");
   }
 
   if (!rpcProbePassed) {
@@ -581,6 +662,8 @@ export function getPreflightExitCode(readiness) {
   return readiness && readiness.ready ? 0 : 1;
 }
 
+export const CANONICAL_DEPLOYER_ADDRESS = "0x5B8942987E95Dfc3EA56F392e37011a86EFB0baf";
+
 /**
  * Formats the final deployment plan banner for dry-run preflight.
  */
@@ -590,24 +673,28 @@ export function formatDeploymentPlan({
   chainId,
   rpcUrl,
   historicalV1Status,
+  release = DEFAULT_RELEASE,
+  confirmAddress = CANONICAL_DEPLOYER_ADDRESS,
 }) {
+  const config = resolveReleaseConfig(release);
   const lines = [];
   lines.push("\n----------------------------------------------------------------------");
   lines.push("DEPLOYMENT PLAN (READ-ONLY PREFLIGHT):");
-  lines.push("1. Contract: Makewhole (v2 with 1:1 bond reservation and restitution economics)");
+  lines.push(`1. Contract: Makewhole (${config.release} with 1:1 bond reservation and restitution economics)`);
   lines.push(`2. Target Network: ${networkName} (${chainId})`);
   lines.push(`3. Target RPC: ${rpcUrl}`);
-  lines.push("4. Status: READ-ONLY DRY-RUN COMPLETE. No contract was deployed.");
+  lines.push(`4. Selected Release: ${config.release}`);
+  lines.push("5. Status: READ-ONLY DRY-RUN COMPLETE. No contract was deployed.");
   lines.push("   No transaction was signed or submitted to any network.");
   if (historicalV1Status) {
-    lines.push(`5. Historical v1 Status: ${historicalV1Status}`);
+    lines.push(`6. Historical v1 Status: ${historicalV1Status}`);
   }
 
   lines.push("");
   if (readiness && readiness.ready) {
     lines.push("Deployment Readiness: READY");
     lines.push("   To execute real deployment, an authorized operator must run:");
-    lines.push("   GENLAYER_PRIVATE_KEY=0x... npm run deploy:execute [--update-env]");
+    lines.push(`   node scripts/deploy-keychain.mjs --deploy --release ${config.release} --confirm-address ${confirmAddress}`);
   } else {
     lines.push("Deployment Readiness: BLOCKED");
     if (readiness && Array.isArray(readiness.blockers) && readiness.blockers.length > 0) {
@@ -615,14 +702,14 @@ export function formatDeploymentPlan({
       readiness.blockers.forEach((b) => lines.push(`   - ${b}`));
     }
     lines.push("");
-    lines.push("   DO NOT RUN deploy:execute until every required readiness check passes.");
+    lines.push("   DO NOT PROCEED with deployment until every required readiness check passes.");
   }
   lines.push("----------------------------------------------------------------------\n");
   return lines.join("\n");
 }
 
-export const RECEIPT_FILENAME = "makewhole-v2.json";
-export const PENDING_JOURNAL_FILENAME = "makewhole-v2.pending.json";
+export const RECEIPT_FILENAME = DEPLOYMENT_RELEASES.v2.receiptFilename;
+export const PENDING_JOURNAL_FILENAME = DEPLOYMENT_RELEASES.v2.pendingFilename;
 export const MAX_TARGET_DEPLOYER_BALANCE_GEN = 1n;
 export const MAX_TARGET_DEPLOYER_BALANCE_WEI = 1_000_000_000_000_000_000n; // 1 GEN = 10^18 wei
 
@@ -666,12 +753,17 @@ export function validateDeployerBalance(balance, feeValue) {
 }
 
 /**
- * Validates that neither a final deployment receipt nor an interrupted pending journal exists.
+ * Validates that neither a final deployment receipt nor an interrupted pending journal exists for the selected release.
  * Fails closed before any transaction is broadcast.
  */
-export function assertNoDeploymentCollisions({ deploymentsDir, existsSyncFn = existsSync }) {
-  const receiptFile = resolve(deploymentsDir, RECEIPT_FILENAME);
-  const pendingFile = resolve(deploymentsDir, PENDING_JOURNAL_FILENAME);
+export function assertNoDeploymentCollisions({
+  deploymentsDir,
+  release = DEFAULT_RELEASE,
+  existsSyncFn = existsSync,
+}) {
+  const config = resolveReleaseConfig(release);
+  const receiptFile = resolve(deploymentsDir, config.receiptFilename);
+  const pendingFile = resolve(deploymentsDir, config.pendingFilename);
 
   if (existsSyncFn(receiptFile)) {
     throw new Error(
@@ -685,7 +777,7 @@ export function assertNoDeploymentCollisions({ deploymentsDir, existsSyncFn = ex
     );
   }
 
-  return { receiptFile, pendingFile };
+  return { receiptFile, pendingFile, release: config.release };
 }
 
 /**
@@ -693,7 +785,8 @@ export function assertNoDeploymentCollisions({ deploymentsDir, existsSyncFn = ex
  */
 export function createPendingJournalIntent({
   project = "makewhole",
-  version = "v2",
+  release = DEFAULT_RELEASE,
+  version = null,
   chainId,
   rpcHost,
   deployerAddress,
@@ -704,9 +797,10 @@ export function createPendingJournalIntent({
   if (!chainId || !rpcHost || !deployerAddress || !sourceCommit || !contractSourceSha256) {
     throw new Error("Missing required fields for pending journal intent.");
   }
+  const config = resolveReleaseConfig(version || release);
   return {
     project,
-    version,
+    version: config.version,
     chainId,
     rpcHost,
     deployerAddress,
@@ -806,7 +900,7 @@ export function assertKeychainAccountCanBeCreated(existingPassword) {
  * Validates a pending deployment journal strictly.
  * Fails closed on any missing, malformed, or invalid fields.
  */
-export function validatePendingJournal(journal) {
+export function validatePendingJournal(journal, expectedRelease = null) {
   if (!journal || typeof journal !== "object") {
     throw new Error("Pending deployment journal is missing or not an object.");
   }
@@ -832,8 +926,20 @@ export function validatePendingJournal(journal) {
   if (journal.project !== "makewhole") {
     throw new Error(`Invalid journal project '${journal.project}', expected 'makewhole'.`);
   }
-  if (journal.version !== "v2") {
-    throw new Error(`Invalid journal version '${journal.version}', expected 'v2'.`);
+  if (!journal.version || typeof journal.version !== "string") {
+    throw new Error(`Invalid journal version '${journal.version}'.`);
+  }
+  const journalConfig = DEPLOYMENT_RELEASES[journal.version];
+  if (!journalConfig) {
+    throw new Error(
+      `Invalid journal version '${journal.version}', expected one of: ${Object.keys(DEPLOYMENT_RELEASES).join(", ")}.`
+    );
+  }
+  if (expectedRelease !== null && expectedRelease !== undefined) {
+    const expectedConfig = resolveReleaseConfig(expectedRelease);
+    if (journal.version !== expectedConfig.version) {
+      throw new Error(`Release mismatch: journal has version '${journal.version}', expected '${expectedConfig.version}'.`);
+    }
   }
   if (journal.status !== "BROADCAST") {
     throw new Error(`Invalid journal status '${journal.status}', expected 'BROADCAST'.`);
@@ -890,7 +996,7 @@ export function validatePendingJournal(journal) {
 /**
  * Validates a final receipt artifact strictly.
  */
-export function validateReceiptArtifact(receipt) {
+export function validateReceiptArtifact(receipt, expectedRelease = null) {
   if (!receipt || typeof receipt !== "object") {
     throw new Error("Receipt artifact is missing or not an object.");
   }
@@ -921,8 +1027,20 @@ export function validateReceiptArtifact(receipt) {
   if (receipt.project !== "makewhole") {
     throw new Error(`Invalid receipt project '${receipt.project}', expected 'makewhole'.`);
   }
-  if (receipt.version !== "v2") {
-    throw new Error(`Invalid receipt version '${receipt.version}', expected 'v2'.`);
+  if (!receipt.version || typeof receipt.version !== "string") {
+    throw new Error(`Invalid receipt version '${receipt.version}'.`);
+  }
+  const receiptConfig = DEPLOYMENT_RELEASES[receipt.version];
+  if (!receiptConfig) {
+    throw new Error(
+      `Invalid receipt version '${receipt.version}', expected one of: ${Object.keys(DEPLOYMENT_RELEASES).join(", ")}.`
+    );
+  }
+  if (expectedRelease !== null && expectedRelease !== undefined) {
+    const expectedConfig = resolveReleaseConfig(expectedRelease);
+    if (receipt.version !== expectedConfig.version) {
+      throw new Error(`Invalid receipt version '${receipt.version}', expected '${expectedConfig.version}'.`);
+    }
   }
   const chainId = typeof receipt.chainId === "bigint" ? Number(receipt.chainId) : receipt.chainId;
   if (chainId !== CANONICAL_CHAIN_ID) {
@@ -989,9 +1107,9 @@ export function validateReceiptArtifact(receipt) {
 /**
  * Validates that an existing final receipt artifact matches the pending journal for idempotent recovery.
  */
-export function validateReceiptMatchesJournal({ receipt, journal, confirmContractAddress = null }) {
-  validateReceiptArtifact(receipt);
-  validatePendingJournal(journal);
+export function validateReceiptMatchesJournal({ receipt, journal, confirmContractAddress = null, expectedRelease = null }) {
+  validateReceiptArtifact(receipt, expectedRelease);
+  validatePendingJournal(journal, expectedRelease);
 
   if (receipt.project !== journal.project) {
     throw new Error(`Project mismatch: receipt has '${receipt.project}', journal has '${journal.project}'.`);
@@ -1224,6 +1342,7 @@ export function getGitReleaseStatus(rootPath = root) {
 export async function executeRecovery({
   confirmAddress,
   confirmContractAddress,
+  release = DEFAULT_RELEASE,
   rootPath = root,
   client = null,
   execGitFn = null,
@@ -1243,9 +1362,10 @@ export async function executeRecovery({
     throw new Error(`Invalid confirmation contract address '${confirmContractAddress}'.`);
   }
 
+  const config = resolveReleaseConfig(release);
   const deploymentsDir = resolve(rootPath, "deployments");
-  const pendingFile = resolve(deploymentsDir, "makewhole-v2.pending.json");
-  const receiptFile = resolve(deploymentsDir, "makewhole-v2.json");
+  const pendingFile = resolve(deploymentsDir, config.pendingFilename);
+  const receiptFile = resolve(deploymentsDir, config.receiptFilename);
   const envLocal = resolve(rootPath, "web", ".env.local");
 
   // Path A: Pending journal does NOT exist
@@ -1257,7 +1377,7 @@ export async function executeRecovery({
       } catch (e) {
         throw new Error(`Receipt file at '${receiptFile}' is malformed JSON: ${e.message}`);
       }
-      validateReceiptArtifact(existingReceipt);
+      validateReceiptArtifact(existingReceipt, config.release);
 
       if (confirmAddress.toLowerCase() !== existingReceipt.deployerAddress.toLowerCase()) {
         throw new Error(
@@ -1329,7 +1449,7 @@ export async function executeRecovery({
   }
 
   try {
-    validatePendingJournal(rawJournal);
+    validatePendingJournal(rawJournal, config.release);
   } catch (e) {
     console.error(`Pending journal validation failed: ${e.message}`);
     console.error(`Pending journal preserved at: ${pendingFile}`);
@@ -1372,6 +1492,7 @@ export async function executeRecovery({
         receipt: existingReceipt,
         journal: rawJournal,
         confirmContractAddress,
+        expectedRelease: config.release,
       });
 
       const genClient = client || createClient({
@@ -1503,10 +1624,10 @@ export async function executeRecovery({
     throw e;
   }
 
-  // 2. Atomically write deployments/makewhole-v2.json
+  // 2. Atomically write receipt artifact
   const receiptArtifact = {
     project: "makewhole",
-    version: "v2",
+    version: config.version,
     chainId: rawJournal.chainId,
     networkName: "GenLayer Studio-dev",
     rpcHost: rawJournal.rpcHost,
